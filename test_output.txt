@@ -1,0 +1,119 @@
+Calculating task graph as no cached configuration is available for tasks: jvmTest
+Type-safe project accessors is an incubating feature.
+
+> Configure project :composeApp
+w: [33m[1m⚠️ CInterop Commonization Disabled[0m[0m
+The project is using Kotlin Multiplatform with hierarchical structure and disabled 'cinterop commonization'
+
+'cinterop commonization' can be enabled in your 'gradle.properties'
+kotlin.mpp.enableCInteropCommonization=true
+
+To hide this message, add to your 'gradle.properties'
+kotlin.mpp.enableCInteropCommonization.nowarn=true 
+
+The following source sets are affected: 
+[appleMain, iosMain, nativeMain]
+
+The following cinterops are affected: 
+[cinterop:compilation/compileKotlinIosArm64/physics_core, cinterop:compilation/compileKotlinIosSimulatorArm64/physics_core]
+[32m[1mSolution:[0m[0m
+[32m[3mPlease enable 'cinterop commonization' in your 'gradle.properties'[0m[0m
+[36mSee: [0m[34mhttps://kotlinlang.org/docs/mpp-share-on-platforms.html#use-native-libraries-in-the-hierarchical-structure[0m[36m[0m
+
+
+> Task :composeApp:kmpPartiallyResolvedDependenciesChecker
+> Task :composeApp:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :composeApp:convertXmlValueResourcesForCommonMain NO-SOURCE
+> Task :composeApp:copyNonXmlValueResourcesForCommonMain UP-TO-DATE
+> Task :composeApp:prepareComposeResourcesTaskForCommonMain UP-TO-DATE
+> Task :composeApp:generateResourceAccessorsForCommonMain UP-TO-DATE
+> Task :composeApp:convertXmlValueResourcesForJvmMain NO-SOURCE
+> Task :composeApp:copyNonXmlValueResourcesForJvmMain NO-SOURCE
+> Task :composeApp:prepareComposeResourcesTaskForJvmMain NO-SOURCE
+> Task :composeApp:generateResourceAccessorsForJvmMain NO-SOURCE
+> Task :composeApp:generateActualResourceCollectorsForJvmMain UP-TO-DATE
+> Task :composeApp:generateComposeResClass UP-TO-DATE
+> Task :composeApp:generateExpectResourceCollectorsForCommonMain UP-TO-DATE
+> Task :composeApp:compileKotlinJvm UP-TO-DATE
+> Task :composeApp:compileJvmMainJava NO-SOURCE
+> Task :composeApp:convertXmlValueResourcesForCommonTest NO-SOURCE
+> Task :composeApp:copyNonXmlValueResourcesForCommonTest NO-SOURCE
+> Task :composeApp:prepareComposeResourcesTaskForCommonTest NO-SOURCE
+> Task :composeApp:generateResourceAccessorsForCommonTest NO-SOURCE
+> Task :composeApp:convertXmlValueResourcesForJvmTest NO-SOURCE
+> Task :composeApp:copyNonXmlValueResourcesForJvmTest NO-SOURCE
+> Task :composeApp:prepareComposeResourcesTaskForJvmTest NO-SOURCE
+> Task :composeApp:generateResourceAccessorsForJvmTest NO-SOURCE
+> Task :composeApp:assembleJvmMainResources UP-TO-DATE
+
+> Task :composeApp:buildRustDesktop
+warning: unused import: `CStr`
+ --> src/lib.rs:1:25
+  |
+1 | use std::ffi::{CString, CStr};
+  |                         ^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `physics_core` (lib) generated 1 warning (run `cargo fix --lib -p physics_core` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.03s
+
+> Task :composeApp:jvmProcessResources UP-TO-DATE
+> Task :composeApp:processJvmMainResources SKIPPED
+> Task :composeApp:jvmMainClasses UP-TO-DATE
+> Task :composeApp:jvmJar UP-TO-DATE
+> Task :composeApp:compileTestKotlinJvm UP-TO-DATE
+> Task :composeApp:compileJvmTestJava NO-SOURCE
+> Task :composeApp:assembleJvmTestResources UP-TO-DATE
+> Task :composeApp:jvmTestProcessResources UP-TO-DATE
+> Task :composeApp:processJvmTestResources SKIPPED
+> Task :composeApp:jvmTestClasses UP-TO-DATE
+
+> Task :composeApp:jvmTest FAILED
+
+NativeLibTest[jvm] > testGetInfo[jvm] FAILED
+    java.lang.UnsatisfiedLinkError at NativeLibTest.kt:9
+
+2 tests completed, 1 failed
+
+[Incubating] Problems report is available at: file:///Users/kamran/PhysicsFX/build/reports/problems/problems-report.html
+
+FAILURE: Build completed with 2 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':composeApp:jvmTest'.
+> There were failing tests. See the report at: file:///Users/kamran/PhysicsFX/composeApp/build/reports/tests/jvmTest/index.html
+
+* Try:
+> Run with --scan to get full insights.
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Configuration cache problems found in this build.
+
+1 problem was found storing the configuration cache.
+- Task `:composeApp:buildRustDesktop` of type `org.gradle.api.DefaultTask`: cannot serialize Gradle script object references as these are not supported with the configuration cache.
+  See https://docs.gradle.org/8.14.3/userguide/configuration_cache.html#config_cache:requirements:disallowed_types
+
+See the complete report at file:///Users/kamran/PhysicsFX/build/reports/configuration-cache/9q65yy6vema7lqw5a46flofc/36ov9uzq0chu1lf5yowvgmmwu/configuration-cache-report.html
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 854ms
+16 actionable tasks: 3 executed, 13 up-to-date
+Configuration cache entry discarded with 1 problem.

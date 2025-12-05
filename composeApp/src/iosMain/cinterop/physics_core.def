@@ -1,0 +1,2 @@
+package = physics_core
+headers = physics_core.h

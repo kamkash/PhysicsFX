@@ -1,0 +1,15 @@
+{
+  "name": "physics_core",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "physics_core_bg.wasm",
+    "physics_core.js",
+    "physics_core.d.ts"
+  ],
+  "main": "physics_core.js",
+  "types": "physics_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

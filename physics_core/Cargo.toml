@@ -1,0 +1,20 @@
+[package]
+name = "physics_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+wgpu = "0.19" # Or latest stable
+jni = { version = "0.21", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+libc = "0.2"
+log = "0.4"
+env_logger = "0.11"
+
+[features]
+default = []
+jni_support = ["dep:jni"]
+wasm_support = ["dep:wasm-bindgen"]
