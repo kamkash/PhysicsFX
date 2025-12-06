@@ -18,7 +18,8 @@ fun App() {
         Scaffold(
             topBar = {
                 MainToolbar()
-            }
+            },
+            contentWindowInsets = WindowInsets(0.dp)
         ) { paddingValues ->
             Column(
                 modifier = Modifier

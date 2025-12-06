@@ -8,7 +8,13 @@ const char* physics_core_get_info();
 void physics_core_free_string(char* s);
 
 // Game loop lifecycle
-bool wgpu_init(int32_t width, int32_t height);
+// surface_handle: Platform-specific native surface handle
+//   - iOS: CAMetalLayer*
+//   - macOS: NSView*
+//   - Windows: HWND
+//   - Linux: X11 Window
+//   - Android: ANativeWindow*
+bool wgpu_init(void* surface_handle, int32_t width, int32_t height);
 void wgpu_update(float delta_time);
 void wgpu_render();
 void wgpu_resize(int32_t width, int32_t height);

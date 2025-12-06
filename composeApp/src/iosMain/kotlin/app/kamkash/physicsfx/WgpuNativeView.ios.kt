@@ -1,58 +1,102 @@
 package app.kamkash.physicsfx
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.interop.UIKitView
-import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.*
+import platform.CoreGraphics.CGRect
+import platform.CoreGraphics.CGRectMake
+import platform.Foundation.NSCoder
+import platform.QuartzCore.CAMetalLayer
+import platform.UIKit.*
+
+@OptIn(ExperimentalForeignApi::class)
+class MetalView : UIView {
+    @OverrideInit constructor(frame: CValue<CGRect>) : super(frame = frame)
+    @OverrideInit constructor(coder: NSCoder) : super(coder = coder)
+
+    private var loop: WgpuGameLoop? = null
+
+    fun setGameLoop(gameLoop: WgpuGameLoop) {
+        this.loop = gameLoop
+    }
+
+    override fun layoutSubviews() {
+        super.layoutSubviews()
+
+        val scale = contentScaleFactor
+        val width = (frame.useContents { size.width } * scale).toInt()
+        val height = (frame.useContents { size.height } * scale).toInt()
+
+        if (width > 0 && height > 0) {
+            loop?.resize(width, height)
+        }
+    }
+
+    companion object : UIViewMeta() {
+        override fun layerClass() = CAMetalLayer.`class`()!!
+    }
+}
 
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 actual fun WgpuNativeView(modifier: Modifier) {
     val gameLoop = remember { IosWgpuGameLoop() }
-    var surfaceSize by remember { mutableStateOf(IntSize(800, 600)) }
-    
-    DisposableEffect(Unit) {
-        onDispose {
-            gameLoop.end()
-        }
-    }
-    
-    LaunchedEffect(surfaceSize) {
-        if (!gameLoop.isRunning() && surfaceSize.width > 0 && surfaceSize.height > 0) {
-            gameLoop.start(null, surfaceSize.width, surfaceSize.height)
-        } else if (gameLoop.isRunning()) {
-            gameLoop.resize(surfaceSize.width, surfaceSize.height)
-        }
-    }
-    
-    Box(
-        modifier = modifier
-            .background(Color(0xFF2A2A2A))
-            .onSizeChanged { size ->
-                surfaceSize = size
+
+    DisposableEffect(Unit) { onDispose { gameLoop.end() } }
+
+    UIKitView(
+            factory = {
+                // Use custom MetalView to have full control over the layer
+                val view = MetalView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0))
+                view.setGameLoop(gameLoop)
+
+                // Configure view properties
+                view.contentScaleFactor = UIScreen.mainScreen.scale
+                view.setUserInteractionEnabled(true)
+                view.setMultipleTouchEnabled(true)
+                view.opaque = true
+                view.backgroundColor = UIColor.blackColor
+
+                // Configure Metal Layer explicitly
+                val layer = view.layer as CAMetalLayer
+                layer.contentsScale = view.contentScaleFactor
+                // layer.presentsWithTransaction = false // Low latency
+                // layer.framebufferOnly = true
+
+                // Calculate initial size
+                val scale = view.contentScaleFactor
+                val width = (view.frame.useContents { size.width } * scale).toInt()
+                val height = (view.frame.useContents { size.height } * scale).toInt()
+
+                println(
+                        "WgpuNativeView Factory: frame=${view.frame.useContents{size.width} }x${view.frame.useContents{size.height}}, scale=$scale, pixels=${width}x${height}"
+                )
+
+                if (width > 0 && height > 0) {
+                    println("Starting game loop with view: $width x $height")
+                    // Pass the raw pointer to the view correctly
+                    val viewPtr = interpretCPointer<CPointed>(view.objcPtr())
+                    gameLoop.start(viewPtr, width, height)
+                }
+
+                view
             },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "iOS WebGPU Surface\n(Game Loop: ${if (gameLoop.isRunning()) "Running" else "Stopped"})",
-            color = Color.White.copy(alpha = 0.7f)
-        )
-        
-        if (gameLoop.isRunning()) {
-            Text(
-                text = "●",
-                color = Color.Green,
-                modifier = Modifier.align(Alignment.TopEnd)
-            )
-        }
-    }
-    
-    // TODO: Replace with UIKitView + CAMetalLayer
+            modifier = modifier,
+            update = { view: MetalView ->
+                // Layout updates are handled in MetalView.layoutSubviews
+                // We just check if we need to start the loop if it wasn't started (e.g. init was
+                // 0x0)
+
+                val scale = view.contentScaleFactor
+                val width = (view.frame.useContents { size.width } * scale).toInt()
+                val height = (view.frame.useContents { size.height } * scale).toInt()
+
+                if (!gameLoop.isRunning() && width > 0 && height > 0) {
+                    val viewPtr = interpretCPointer<CPointed>(view.objcPtr())
+                    gameLoop.start(viewPtr, width, height)
+                }
+            },
+            onRelease = { gameLoop.end() }
+    )
 }

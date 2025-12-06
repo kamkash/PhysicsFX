@@ -2,8 +2,13 @@ package app.kamkash.physicsfx
 
 actual object NativeLib {
     actual fun getInfo(): String {
-        // TODO: Initialize wasm module and call wasm_get_info
-        // For now, return a placeholder
-        return "WASM implementation pending - need to initialize wasm-bindgen module"
+        return "WASM Ready (Rust call disabled)"
+        /*
+        return try {
+            PhysicsCore.wasm_get_info()
+        } catch (e: Exception) {
+            "WASM initializing... (see console for details)"
+        }
+        */
     }
 }

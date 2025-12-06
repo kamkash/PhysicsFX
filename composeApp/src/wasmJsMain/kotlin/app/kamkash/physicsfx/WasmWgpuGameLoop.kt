@@ -4,8 +4,14 @@ import kotlinx.browser.window
 import org.w3c.dom.Window
 import org.w3c.performance.Performance
 
+import kotlin.js.Promise
+import kotlin.js.JsAny
+
 // Top-level JS interop for Date.now()
 private fun dateNow(): Double = js("Date.now()")
+
+// External declarations for WASM Rust bindings
+// PhysicsCore moved to PhysicsCore.kt
 
 class WasmWgpuGameLoop : WgpuGameLoop {
     private var running = false
@@ -26,34 +32,72 @@ class WasmWgpuGameLoop : WgpuGameLoop {
         
         println("Starting Wasm game loop: ${width}x${height}")
         
-        // TODO: Initialize wgpu via wasm-bindgen
-        // val initialized = wasm_init(width.toUInt(), height.toUInt())
-        val initialized = true
-        
-        if (!initialized) {
-            println("Failed to initialize wgpu")
-            return
+        // surfaceHandle should be the canvas element ID (String)
+        val canvasId: String = when (surfaceHandle) {
+            is String -> surfaceHandle
+            null -> {
+                println("WARNING: No canvas ID provided, using default 'canvas'")
+                "canvas"
+            }
+            else -> {
+                println("WARNING: Unsupported surface handle type: ${surfaceHandle::class}")
+                "canvas"
+            }
         }
         
-        running = true
-        lastFrameTime = dateNow()
-        
-        // Start render loop using requestAnimationFrame
-        startRenderLoop()
+        // Initialize WASM module explicitly (required for --target web)
+        PhysicsCore.init().then {
+            println("WASM module initialized")
+            
+            // Initialize wgpu with canvas ID
+            PhysicsCore.wasm_init(canvasId, width, height).then { result ->
+                // result is JsAny (JS boolean true/false)
+                // We convert via string to be safe without JsBoolean imports
+                val initialized = result.toString() == "true"
+                if (!initialized) {
+                    println("Failed to initialize wgpu")
+                } else {
+                    println("WASM wgpu initialized successfully")
+                    running = true
+                    lastFrameTime = dateNow()
+                    // Start render loop using requestAnimationFrame
+                    startRenderLoop()
+                }
+                null
+            }.catch { e ->
+                println("Failed to initialize wgpu: ${e.toString()}")
+                null
+            }
+            null
+        }
     }
     
     private fun startRenderLoop() {
-        if (!running) return
+        if (!running) {
+             println("Render loop stopped (running=false)")
+             return
+        }
+        // println("Loop tick") // Uncomment for verbosity if needed, but for now we just want to know if it starts
+        if (frameCount % 60 == 0) println("Loop active")
+        
         
         val currentTime = dateNow()
         val deltaTime = ((currentTime - lastFrameTime) / 1000.0).toFloat()
         lastFrameTime = currentTime
         
         // Update
-        // wasm_update(deltaTime)
+        try {
+            PhysicsCore.wasm_update(deltaTime)
+        } catch (e: Throwable) {
+             println("Error in wasm_update: $e")
+        }
         
         // Render
-        // wasm_render()
+        try {
+            PhysicsCore.wasm_render()
+        } catch (e: Throwable) {
+             println("Error in wasm_render: $e")
+        }
         
         // FPS tracking
         frameCount++
@@ -79,7 +123,11 @@ class WasmWgpuGameLoop : WgpuGameLoop {
     override fun resize(width: Int, height: Int) {
         if (!running) return
         println("Resizing to: ${width}x${height}")
-        // wasm_resize(width.toUInt(), height.toUInt())
+        try {
+            PhysicsCore.wasm_resize(width, height)
+        } catch (e: Exception) {
+            // Ignore if not loaded yet
+        }
     }
     
     override fun end() {
@@ -92,7 +140,11 @@ class WasmWgpuGameLoop : WgpuGameLoop {
         window.cancelAnimationFrame(animationFrameId)
         
         // Cleanup wgpu
-        // wasm_shutdown()
+        try {
+            PhysicsCore.wasm_shutdown()
+        } catch (e: Exception) {
+            // Ignore if not loaded yet
+        }
     }
     
     override fun isRunning(): Boolean = running

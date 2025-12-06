@@ -6,18 +6,21 @@ import kotlin.math.min
 class JvmWgpuGameLoop : WgpuGameLoop {
     private var running = false
     private var gameLoopJob: Job? = null
-    private val gameScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    // Use Dispatchers.Main (Swing EDT) for rendering as required by Metal/wgpu
+    private val gameScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private var lastFrameTime = System.nanoTime()
     private var frameCount = 0
     private var fpsTimer = 0.0
 
-    // Native methods
-    private external fun nativeInit(width: Int, height: Int): Boolean
+    // Native methods - surfaceHandle is a raw pointer (0 for JVM since we don't have easy access)
+    private external fun nativeInit(surfaceHandle: Long, width: Int, height: Int): Boolean
     private external fun nativeUpdate(deltaTime: Float)
     private external fun nativeRender()
     private external fun nativeResize(width: Int, height: Int)
     private external fun nativeShutdown()
+    private external fun nativeStartWinitApp()
+
 
     companion object {
         const val TARGET_FPS = 60
@@ -34,12 +37,28 @@ class JvmWgpuGameLoop : WgpuGameLoop {
             return
         }
 
-        println("Starting JVM game loop: ${width}x${height}")
+        println("Starting JVM game loop: ${width}x${height} on thread: ${Thread.currentThread().name}")
+
+        // For JVM desktop, we don't have easy access to native window handles from Compose
+        // Pass 0 to indicate no surface - wgpu will operate in headless mode or skip rendering
+        val surfacePtr: Long = when (surfaceHandle) {
+            is Long -> surfaceHandle
+            null -> {
+                println("WARNING: No surface handle provided for JVM. Surface-based rendering not available.")
+                0L
+            }
+            else -> {
+                println("WARNING: Unsupported surface handle type: ${surfaceHandle::class}. Using null.")
+                0L
+            }
+        }
 
         // Initialize wgpu
-        val initialized = nativeInit(width, height)
+        println("DEBUG: Calling nativeInit with surfacePtr=0x${surfacePtr.toString(16)}, size=${width}x${height}")
+        val initialized = nativeInit(surfacePtr, width, height)
+        println("DEBUG: nativeInit returned: $initialized")
         if (!initialized) {
-            println("Failed to initialize wgpu")
+            println("ERROR: Failed to initialize wgpu")
             return
         }
 
@@ -48,6 +67,7 @@ class JvmWgpuGameLoop : WgpuGameLoop {
 
         // Start game loop coroutine
         gameLoopJob = gameScope.launch {
+            println("DEBUG: Game loop coroutine started on thread: ${Thread.currentThread().name}")
             while (running && isActive) {
                 val currentTime = System.nanoTime()
                 val deltaTimeNs = currentTime - lastFrameTime
@@ -56,9 +76,11 @@ class JvmWgpuGameLoop : WgpuGameLoop {
                 val deltaTime = deltaTimeNs / 1_000_000_000.0f
 
                 // Update
+                // println("DEBUG: Calling nativeUpdate")
                 nativeUpdate(deltaTime)
 
                 // Render
+                // println("DEBUG: Calling nativeRender")
                 nativeRender()
 
                 // FPS tracking
@@ -77,6 +99,7 @@ class JvmWgpuGameLoop : WgpuGameLoop {
                     delay(sleepTime / 1_000_000) // Convert to ms
                 }
             }
+            println("DEBUG: Game loop coroutine exited")
         }
     }
 
@@ -90,14 +113,14 @@ class JvmWgpuGameLoop : WgpuGameLoop {
 
     override fun resize(width: Int, height: Int) {
         if (!running) return
-        println("Resizing to: ${width}x${height}")
+        println("DEBUG: Resizing to: ${width}x${height}")
         nativeResize(width, height)
     }
 
     override fun end() {
         if (!running) return
 
-        println("Stopping JVM game loop")
+        println("DEBUG: Stopping JVM game loop")
         running = false
 
         // Cancel game loop
@@ -107,8 +130,14 @@ class JvmWgpuGameLoop : WgpuGameLoop {
         }
 
         // Cleanup wgpu
+        println("DEBUG: Calling nativeShutdown")
         nativeShutdown()
     }
 
     override fun isRunning(): Boolean = running
+
+    fun runWinit() {
+        println("Calling nativeStartWinitApp...")
+        nativeStartWinitApp()
+    }
 }

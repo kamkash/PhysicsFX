@@ -2,6 +2,7 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBinary
+import java.io.ByteArrayOutputStream
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -82,6 +83,8 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
+            implementation("net.java.dev.jna:jna:5.13.0")
+            implementation("net.java.dev.jna:jna-platform:5.13.0")
         }
     }
 }
@@ -127,7 +130,16 @@ compose.desktop {
     application {
         mainClass = "app.kamkash.physicsfx.MainKt"
 
-        jvmArgs += "-Djava.library.path=${project.projectDir}/src/jvmMain/resources"
+        jvmArgs += listOf(
+            "-Djava.library.path=${project.projectDir}/src/jvmMain/resources",
+            "--add-exports", "java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-exports", "java.desktop/sun.lwawt=ALL-UNNAMED",
+            "--add-exports", "java.desktop/sun.lwawt.macosx=ALL-UNNAMED", 
+            "--add-opens", "java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-opens", "java.desktop/java.awt=ALL-UNNAMED",
+            "-XstartOnFirstThread",
+            "-Dsun.java2d.metal=true"
+        )
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
@@ -181,14 +193,33 @@ tasks.register("buildRustIOS") {
         val cargoHome = System.getProperty("user.home") + "/.cargo/bin"
         val cargo = "$cargoHome/cargo"
         val rustup = "$cargoHome/rustup"
+        
+        // Fetch SDKROOT for macOS
+        val sdkRoot = try {
+            val stdout = ByteArrayOutputStream()
+            exec {
+                commandLine("xcrun", "--sdk", "macosx", "--show-sdk-path")
+                standardOutput = stdout
+            }
+            stdout.toString().trim()
+        } catch (e: Exception) {
+            println("Failed to get SDK path via xcrun: $e")
+            ""
+        }
+        
         val targets = listOf("aarch64-apple-ios", "aarch64-apple-ios-sim")
         for (target in targets) {
             exec {
                 workingDir = rustDir
+                environment("PATH", System.getenv("PATH") + ":$cargoHome") // Ensure tools are found
                 commandLine(rustup, "target", "add", target)
             }
             exec {
                 workingDir = rustDir
+                environment("PATH", System.getenv("PATH") + ":$cargoHome")
+                if (sdkRoot.isNotEmpty()) {
+                    environment("SDKROOT", sdkRoot)
+                }
                 commandLine(cargo, "build", "--release", "--target", target)
             }
         }
