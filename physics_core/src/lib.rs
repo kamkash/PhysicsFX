@@ -79,20 +79,6 @@ struct WgpuState {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     diffuse_bind_group: wgpu::BindGroup,
-
-    // Egui support - Desktop Only
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    #[allow(dead_code)]
-    egui_renderer: Option<egui_wgpu::Renderer>,
-    // We need to store this between update (where we run egui) and render
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    #[allow(dead_code)]
-    pending_egui_output: Option<(egui::TexturesDelta, Vec<egui::ClippedPrimitive>)>,
-
-    // Cross-platform Input State
-    // egui_input_state: Mutex<EguiInputState>, // REMOVED
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    egui_ctx: egui::Context,
 }
 
 // Wrapper to force Send/Sync for WASM where we know it's single-threaded
@@ -391,14 +377,6 @@ fn init_wgpu_internal(
         vertex_buffer,
         index_buffer,
         diffuse_bind_group,
-
-        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-        egui_renderer: None,
-        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-        pending_egui_output: None,
-        // egui_input_state: Mutex::new(EguiInputState::new()), // REMOVED
-        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-        egui_ctx: egui::Context::default(),
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -477,60 +455,6 @@ fn render_internal() {
                     .set_index_buffer(state.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
             }
-
-            // Egui Input Preparation - REMOVED
-            // We only rely on winit for input now.
-
-            // Egui Run - for non-winit targets (Android/iOS/Wasm) - REMOVED logic
-            // We no longer run egui manually here. Desktop runs it in start_winit_app.
-
-            // Egui Render Pass
-            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-            if let (Some(renderer), Some((textures_delta, clipped_primitives))) = (
-                state.egui_renderer.as_mut(),
-                state.pending_egui_output.take(),
-            ) {
-                let screen_descriptor = egui_wgpu::ScreenDescriptor {
-                    size_in_pixels: [state.config.width, state.config.height],
-                    pixels_per_point: 1.0, // Default to 1.0 if not tracking scale manually
-                };
-
-                for (id, image_delta) in &textures_delta.set {
-                    renderer.update_texture(&state.device, &state.queue, *id, image_delta);
-                }
-
-                renderer.update_buffers(
-                    &state.device,
-                    &state.queue,
-                    &mut encoder,
-                    &clipped_primitives,
-                    &screen_descriptor,
-                );
-
-                {
-                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Egui Render Pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-
-                    renderer.render(&mut render_pass, &clipped_primitives, &screen_descriptor);
-                }
-
-                for id in &textures_delta.free {
-                    renderer.free_texture(id);
-                }
-            }
-
             state.queue.submit(std::iter::once(encoder.finish()));
             output.present();
         } else {
@@ -1212,7 +1136,7 @@ pub fn start_winit_app() {
     let event_loop = EventLoop::new().unwrap();
     let window = std::sync::Arc::new(
         WindowBuilder::new()
-            .with_title("PhysicsFX (Rust Winit + Egui)")
+            .with_title("PhysicsFX (Rust Winit)")
             .with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
             .build(&event_loop)
             .unwrap(),
@@ -1220,105 +1144,36 @@ pub fn start_winit_app() {
 
     let width = window.inner_size().width;
     let height = window.inner_size().height;
-
-    // Use internal init which is now platform-agnostic regarding surface creation
-    // But for winit we extracted the handles manually in init_wgpu_internal?
-    // No, init_wgpu_internal takes raw handles.
-    // We need to get them from winit window.
-
-    // We can't easily call init_wgpu_internal here because getting raw handles
-    // from winit 0.29 requires rwh v0.6 but init_wgpu_internal uses rwh v0.6
-    // so it should be compatible if we pass the right thing.
-
-    // Simplification: We just call the internal init with handles.
     let window_handle = window.window_handle().unwrap().as_raw();
     let display_handle = window.display_handle().unwrap().as_raw();
-
     // Note: init_wgpu_internal expects rwh::RawWindowHandle, etc.
-
     if !init_wgpu_internal(window_handle, display_handle, width, height) {
         log::error!("Failed to initialize wgpu");
         return;
     }
 
-    // Initialize Egui for Winit (Desktop only)
-    let mut egui_state = egui_winit::State::new(
-        egui::Context::default(),
-        egui::ViewportId::ROOT,
-        &window,
-        Some(window.scale_factor() as f32),
-        None,
-    );
-
-    // Initialize Egui Renderer
-    if let Ok(mut guard) = WGPU_STATE.lock() {
-        if let Some(state) = guard.0.as_mut() {
-            let renderer = egui_wgpu::Renderer::new(&state.device, state.config.format, None, 1);
-            state.egui_renderer = Some(renderer);
-            state.egui_ctx = egui_state.egui_ctx().clone();
-        }
-    }
-
     event_loop
-        .run(|event, target| {
-            match event {
-                Event::WindowEvent { event, .. } => {
-                    // Pass event to egui
-                    let _response = egui_state.on_window_event(&window, &event);
-                    if _response.consumed {
-                        return;
-                    }
-
-                    match event {
-                        WindowEvent::CloseRequested => target.exit(),
-                        WindowEvent::Resized(size) => {
-                            let width = size.width;
-                            let height = size.height;
-                            if width > 0 && height > 0 {
-                                resize_internal(width, height);
-                                window.request_redraw();
-                            }
-                        }
-                        WindowEvent::RedrawRequested => {
-                            // 1. Run Egui
-                            let raw_input = egui_state.take_egui_input(&window);
-                            let full_output = egui_state.egui_ctx().run(raw_input, |ctx| {
-                                egui::CentralPanel::default().show(ctx, |ui| {
-                                    ui.heading("PhysicsFX Desktop");
-                                    ui.label("Egui running on top of WGPU via Winit");
-                                    if ui.button("Click me").clicked() {
-                                        log::info!("Button clicked!");
-                                    }
-                                });
-                            });
-
-                            egui_state.handle_platform_output(&window, full_output.platform_output);
-
-                            let clipped_primitives = egui_state.egui_ctx().tessellate(
-                                full_output.shapes,
-                                egui_state.egui_ctx().pixels_per_point(),
-                            );
-
-                            // 2. Store egui output in WGPU_STATE
-                            if let Ok(mut guard) = WGPU_STATE.lock() {
-                                if let Some(state) = guard.0.as_mut() {
-                                    state.pending_egui_output =
-                                        Some((full_output.textures_delta, clipped_primitives));
-                                }
-                            }
-
-                            // 3. Render
-                            render_internal();
-                            window.request_redraw();
-                        }
-                        _ => (),
+        .run(|event, target| match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => target.exit(),
+                WindowEvent::Resized(size) => {
+                    let width = size.width;
+                    let height = size.height;
+                    if width > 0 && height > 0 {
+                        resize_internal(width, height);
+                        window.request_redraw();
                     }
                 }
-                Event::AboutToWait => {
+                WindowEvent::RedrawRequested => {
+                    render_internal();
                     window.request_redraw();
                 }
                 _ => (),
+            },
+            Event::AboutToWait => {
+                window.request_redraw();
             }
+            _ => (),
         })
         .unwrap();
 }

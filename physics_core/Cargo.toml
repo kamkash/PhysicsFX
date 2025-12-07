@@ -8,8 +8,6 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 wgpu = { version = "0.20", features = ["webgl"] }
-egui = "0.28"
-egui-wgpu = "0.28"
 jni = { version = "0.21", optional = true }
 wasm-bindgen = { version = "0.2.92", optional = true }
 libc = "0.2"
@@ -36,5 +34,4 @@ jni_support = ["dep:jni"]
 wasm_support = ["dep:wasm-bindgen"]
 [target."cfg(not(any(target_os = \"android\", target_arch = \"wasm32\")))".dependencies]
 winit = "0.29"
-egui-winit = "0.28"
 

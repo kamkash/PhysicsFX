@@ -161,3 +161,16 @@ xcrun devicectl device process launch --device 00008103-001A309022DA001E app.kam
 # Or to build to a local folder, add -derivedDataPath ./build to xcodebuild:
 xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphoneos \
   -destination 'platform=iOS,name=iPad' -derivedDataPath ./build build
+
+
+######################################################
+# Android APK
+# Android sdk 
+```bash
+export PATH="$PATH:/Users/kamran/Library/Android/sdk/platform-tools"
+./gradlew :composeApp:assembleDebug
+adb devices -l
+adb install /Users/kamran/PhysicsFX/composeApp/build/outputs/apk/debug/app-debug.apk
+adb install -s <deviceId> /Users/kamran/PhysicsFX/composeApp/build/outputs/apk/debug/app-debug.apk
+```
+

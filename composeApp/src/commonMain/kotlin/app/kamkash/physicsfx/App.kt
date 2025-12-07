@@ -15,26 +15,14 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 @Preview
 fun App() {
     MaterialTheme {
-        Scaffold(
-            topBar = {
-                MainToolbar()
-            },
-            contentWindowInsets = WindowInsets(0.dp)
-        ) { paddingValues ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
+        Scaffold(topBar = { MainToolbar() }, contentWindowInsets = WindowInsets(0.dp)) {
+                paddingValues ->
+            Row(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 // WebGPU Rendering Surface
-                WgpuRenderSurface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                )
-                
+                WgpuRenderSurface(modifier = Modifier.weight(3f).fillMaxHeight())
+
                 // Info panel
-                InfoPanel()
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) { InfoPanel() }
             }
         }
     }
@@ -44,62 +32,39 @@ fun App() {
 @Composable
 fun MainToolbar() {
     var showMenu by remember { mutableStateOf(false) }
-    
+
     TopAppBar(
-        title = { Text("PhysicsFX") },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ),
-        actions = {
-            TextButton(onClick = { /* Play/Pause simulation */ }) {
-                Text("▶")
+            title = { Text("PhysicsFX") },
+            colors =
+                    TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+            actions = {
+                TextButton(onClick = { /* Play/Pause simulation */}) { Text("▶") }
+                TextButton(onClick = { /* Reset simulation */}) { Text("⟳") }
+                TextButton(onClick = { /* Settings */}) { Text("⚙") }
+                TextButton(onClick = { showMenu = !showMenu }) { Text("⋮") }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(text = { Text("Export") }, onClick = { showMenu = false })
+                    DropdownMenuItem(text = { Text("About") }, onClick = { showMenu = false })
+                }
             }
-            TextButton(onClick = { /* Reset simulation */ }) {
-                Text("⟳")
-            }
-            TextButton(onClick = { /* Settings */ }) {
-                Text("⚙")
-            }
-            TextButton(onClick = { showMenu = !showMenu }) {
-                Text("⋮")
-            }
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Export") },
-                    onClick = { showMenu = false }
-                )
-                DropdownMenuItem(
-                    text = { Text("About") },
-                    onClick = { showMenu = false }
-                )
-            }
-        }
     )
 }
 
 @Composable
 fun WgpuRenderSurface(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(Color(0xFF1E1E1E))
-    ) {
+    Box(modifier = modifier.background(Color(0xFF1E1E1E))) {
         // Platform-specific rendering surface
-        WgpuNativeView(
-            modifier = Modifier.fillMaxSize()
-        )
-        
+        WgpuNativeView(modifier = Modifier.fillMaxSize())
+
         // Overlay info
         Text(
-            text = "WebGPU Render Surface",
-            color = Color.White.copy(alpha = 0.5f),
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(8.dp)
+                text = "WebGPU Render Surface",
+                color = Color.White.copy(alpha = 0.5f),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
         )
     }
 }
@@ -107,41 +72,37 @@ fun WgpuRenderSurface(modifier: Modifier = Modifier) {
 @Composable
 fun InfoPanel() {
     var nativeInfo by remember { mutableStateOf("Loading...") }
-    
+
     LaunchedEffect(Unit) {
-        nativeInfo = try {
-            NativeLib.getInfo()
-        } catch (e: Exception) {
-            "Error: ${e.message}"
-        }
+        nativeInfo =
+                try {
+                    NativeLib.getInfo()
+                } catch (e: Exception) {
+                    "Error: ${e.message}"
+                }
     }
-    
+
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(120.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
+            modifier = Modifier.fillMaxWidth().height(120.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.padding(16.dp).fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = "Native Info:",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "Native Info:",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = nativeInfo,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = nativeInfo,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
 // Platform-specific rendering view (expect/actual pattern)
-@Composable
-expect fun WgpuNativeView(modifier: Modifier = Modifier)
+@Composable expect fun WgpuNativeView(modifier: Modifier = Modifier)
