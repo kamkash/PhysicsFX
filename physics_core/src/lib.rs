@@ -150,14 +150,14 @@ fn create_texture(
     }
 
     queue.write_texture(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture: &texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
         &data,
-        wgpu::ImageDataLayout {
+        wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(4 * width),
             rows_per_image: Some(height),
@@ -189,7 +189,7 @@ fn init_wgpu_internal(
 ) -> bool {
     log::info!("Initializing wgpu with size {}x{}", width, height);
 
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
@@ -215,27 +215,26 @@ fn init_wgpu_internal(
         compatible_surface: Some(&surface),
         force_fallback_adapter: false,
     })) {
-        Some(a) => a,
-        None => {
-            log::error!("Failed to find suitable adapter");
+        Ok(a) => a,
+        Err(e) => {
+            log::error!("Failed to find suitable adapter: {:?}", e);
             return false;
         }
     };
 
-    let (device, queue) = match pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
+    let (device, queue) =
+        match pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("physics_core device"),
             required_features: wgpu::Features::empty(),
             required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
-        },
-        None,
-    )) {
-        Ok(dq) => dq,
-        Err(e) => {
-            log::error!("Failed to request device: {:?}", e);
-            return false;
-        }
-    };
+            ..Default::default()
+        })) {
+            Ok(dq) => dq,
+            Err(e) => {
+                log::error!("Failed to request device: {:?}", e);
+                return false;
+            }
+        };
 
     let surface_caps = surface.get_capabilities(&adapter);
     // Use the first format reported by the surface capabilities.
@@ -323,13 +322,13 @@ fn init_wgpu_internal(
         layout: Some(&render_pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[Vertex::desc()],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: config.format,
                 blend: Some(wgpu::BlendState::REPLACE),
@@ -353,6 +352,7 @@ fn init_wgpu_internal(
             alpha_to_coverage_enabled: false,
         },
         multiview: None,
+        cache: None,
     });
 
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -442,6 +442,7 @@ fn render_internal() {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
@@ -777,7 +778,6 @@ pub fn wasm_get_info() -> String {
 }
 
 #[cfg(feature = "wasm_support")]
-#[cfg(feature = "wasm_support")]
 #[wasm_bindgen]
 pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -791,12 +791,6 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
 
     // For WASM, we use web_sys to get the canvas element
     use wasm_bindgen::JsCast;
-
-    // Force WebGL backend to ensure stability across browsers with partial WebGPU support
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::GL,
-        ..Default::default()
-    });
 
     let window = match web_sys::window() {
         Some(w) => w,
@@ -813,33 +807,6 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
             return false;
         }
     };
-
-    /*
-    // Create a NEW debug canvas to avoid conflict with Compose
-    let canvas_element = document.create_element("canvas").unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas_element.dyn_into().unwrap();
-
-    // Force logical size to 500x500 for debugging
-    let width = 500;
-    let height = 500;
-
-    canvas.set_width(width);
-    canvas.set_height(height);
-
-    canvas.style().set_property("position", "fixed").unwrap();
-    canvas.style().set_property("top", "50px").unwrap(); // Offset slightly
-    canvas.style().set_property("left", "50px").unwrap();
-    canvas.style().set_property("width", "500px").unwrap();
-    canvas.style().set_property("height", "500px").unwrap();
-    canvas.style().set_property("z-index", "2147483647").unwrap(); // Max INT
-    canvas.style().set_property("pointer-events", "none").unwrap();
-    canvas.style().set_property("background-color", "magenta").unwrap(); // VISIBILITY CHECK
-    canvas.style().set_property("border", "5px solid red").unwrap(); // BORDER CHECK
-
-    document.body().unwrap().append_child(&canvas).unwrap();
-
-    log::info!("Created debug canvas overlay 500x500 (Magenta/Red Border)");
-    */
 
     let canvas = match document.get_element_by_id(canvas_id) {
         Some(c) => c,
@@ -862,58 +829,89 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
 
     // Apply debug style to the EXISTING canvas to verify we have it
     // We wrap these in a block and ignore errors just in case
-    /*
-    {
-        let _ = canvas.style().set_property("border", "5px solid red");
-        // let _ = canvas.style().set_property("background-color", "magenta");
-    }
-    */
+
     log::info!("Acquired existing canvas: {}", canvas_id);
 
-    let surface = match instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas)) {
-        Ok(s) => s,
-        Err(e) => {
-            log::error!("Failed to create surface: {:?}", e);
-            return false;
-        }
-    };
+    // Helper function to try initializing a specific backend
+    let init_backend = |backend: wgpu::Backends, canvas: web_sys::HtmlCanvasElement| async move {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: backend,
+            ..Default::default()
+        });
 
-    let adapter = match instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        })
-        .await
-    {
-        Some(a) => a,
-        None => {
-            log::error!("Failed to find suitable adapter");
-            return false;
-        }
-    };
+        let surface = match instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())) {
+            Ok(s) => s,
+            Err(e) => return Err(format!("Failed to create surface: {:?}", e)),
+        };
 
-    log::info!("Adapter backend: {:?}", adapter.get_info().backend);
-    log::info!("Adapter limits: {:?}", adapter.limits());
+        let adapter = match instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+        {
+            Ok(a) => a,
+            Err(_) => return Err("Failed to find suitable adapter".to_string()),
+        };
 
-    let requested_limits = wgpu::Limits::downlevel_webgl2_defaults();
-    log::info!("Requesting limits: {:?}", requested_limits);
+        log::info!("Adapter backend: {:?}", adapter.get_info().backend);
+        log::info!("Adapter limits: {:?}", adapter.limits());
 
-    let (device, queue) = match adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
+        let requested_limits = if backend == wgpu::Backends::BROWSER_WEBGPU {
+            // For WebGPU, trust the adapter to handle its own limits
+            adapter.limits()
+        } else {
+            // For WebGL, use safe downlevel defaults but try to bump texture size
+            let mut limits = wgpu::Limits::downlevel_webgl2_defaults();
+            let adapter_limits = adapter.limits();
+            limits.max_texture_dimension_2d = adapter_limits.max_texture_dimension_2d;
+            limits
+        };
+
+        log::info!("Requesting limits: {:?}", requested_limits);
+
+        let (device, queue) = match adapter
+            .request_device(&wgpu::DeviceDescriptor {
                 label: Some("physics_core device"),
                 required_features: wgpu::Features::empty(),
-                // Use strict defaults to avoid asking for limits the browser doesn't recognize
                 required_limits: requested_limits,
-            },
-            None,
-        )
-        .await
-    {
-        Ok(dq) => dq,
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(dq) => dq,
+            Err(e) => return Err(format!("Failed to request device: {:?}", e)),
+        };
+
+        Ok((instance, surface, adapter, device, queue))
+    };
+
+    // Try WebGPU first
+    let result = match init_backend(wgpu::Backends::BROWSER_WEBGPU, canvas.clone()).await {
+        Ok(res) => Ok(res),
         Err(e) => {
-            log::error!("Failed to request device: {:?}", e);
+            log::warn!(
+                "WebGPU initialization failed: {}. Replacing canvas and falling back to WebGL...",
+                e
+            );
+
+            // Replace the canvas to clear any tainted context
+            let parent = canvas.parent_node().unwrap();
+            let new_canvas_node = canvas.clone_node().unwrap();
+            parent.replace_child(&new_canvas_node, &canvas).unwrap();
+
+            let new_canvas: web_sys::HtmlCanvasElement = new_canvas_node.dyn_into().unwrap();
+
+            init_backend(wgpu::Backends::GL, new_canvas).await
+        }
+    };
+
+    let (instance, surface, adapter, device, queue) = match result {
+        Ok(res) => res,
+        Err(e) => {
+            log::error!("Final initialization failed: {}", e);
             return false;
         }
     };
@@ -1007,13 +1005,13 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         layout: Some(&render_pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[Vertex::desc()],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: config.format,
                 blend: Some(wgpu::BlendState::REPLACE),
@@ -1037,6 +1035,7 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
             alpha_to_coverage_enabled: false,
         },
         multiview: None,
+        cache: None,
     });
 
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

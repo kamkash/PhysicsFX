@@ -22,6 +22,8 @@ actual fun WgpuNativeView(modifier: Modifier) {
         canvas.style.left = "0px"
         canvas.style.width = "400px"
         canvas.style.height = "400px"
+        canvas.width = 400
+        canvas.height = 400
 
         canvas.style.zIndex = "100" // Above Compose Shadow DOM but reasonable
         // Width/height set dynamically in onSizeChanged
@@ -39,12 +41,16 @@ actual fun WgpuNativeView(modifier: Modifier) {
     Box(
             modifier =
                     modifier.onSizeChanged { size ->
+                        println("DEBUG: Canvas size changed to ${size.width}x${size.height}")
                         val canvas = document.getElementById(canvasId) as? HTMLCanvasElement
                         if (canvas != null && size.width > 0 && size.height > 0) {
                             // Clamp to WebGL2 max texture dimension (matches Rust-side clamping)
                             val maxDim = 2048
                             val clampedWidth = minOf(size.width, maxDim)
                             val clampedHeight = minOf(size.height, maxDim)
+
+                            val width = 400
+                            val height = 400
 
                             // Update canvas CSS dimensions to match clamped size
                             // canvas.style.width = "${clampedWidth}px"
@@ -55,9 +61,11 @@ actual fun WgpuNativeView(modifier: Modifier) {
                             // canvas.height = clampedHeight
 
                             if (gameLoop.isRunning()) {
-                                gameLoop.resize(clampedWidth, clampedHeight)
+                                // gameLoop.resize(clampedWidth, clampedHeight)
+                                gameLoop.resize(width, height)
                             } else {
-                                gameLoop.start(canvasId, clampedWidth, clampedHeight)
+                                // gameLoop.start(canvasId, clampedWidth, clampedHeight)
+                                gameLoop.start(canvasId, width, height)
                             }
                         }
                     }

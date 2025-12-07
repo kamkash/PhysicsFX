@@ -7,9 +7,9 @@ edition = "2021"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-wgpu = { version = "0.20", features = ["webgl"] }
+wgpu = { version = "27.0.1", features = ["webgl"] }
 jni = { version = "0.21", optional = true }
-wasm-bindgen = { version = "0.2.92", optional = true }
+wasm-bindgen = { version = "0.2.93", optional = true }
 libc = "0.2"
 log = "0.4"
 env_logger = "0.11"
