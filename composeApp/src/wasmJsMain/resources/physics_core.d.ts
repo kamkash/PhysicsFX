@@ -42,10 +42,10 @@ export interface InitOutput {
   readonly wgpu_render_bundle_pop_debug_group: (a: number) => void;
   readonly wgpu_render_bundle_insert_debug_marker: (a: number, b: number) => void;
   readonly wgpu_render_bundle_push_debug_group: (a: number, b: number) => void;
+  readonly wasm_bindgen__convert__closures_____invoke__hee5f8c1a748eab7e: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen__closure__destroy__h62b9fa94840cb34a: (a: number, b: number) => void;
   readonly wasm_bindgen__convert__closures_____invoke__h8c4b64e1003bd1eb: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen__closure__destroy__hbe4f64e4a7f56493: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__h2722dc08f6e4d727: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen__closure__destroy__h2dd58a0ce178cf60: (a: number, b: number) => void;
   readonly wasm_bindgen__convert__closures_____invoke__h3987b035e3186da2: (a: number, b: number, c: any, d: any) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
