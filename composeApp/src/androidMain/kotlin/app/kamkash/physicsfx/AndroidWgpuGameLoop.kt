@@ -11,6 +11,7 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
     private var lastFrameTime = System.nanoTime()
     private var frameCount = 0
     private var fpsTimer = 0.0
+    private var surfaceReady = false
 
     // Native methods - surface is android.view.Surface object
     private external fun nativeInit(surface: Surface, width: Int, height: Int): Boolean
@@ -66,6 +67,9 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
         // Start game loop coroutine
         gameLoopJob =
                 gameScope.launch {
+                    // Give Vulkan swapchain time to initialize
+                    delay(100)
+
                     while (running && isActive) {
                         val currentTime = System.nanoTime()
                         val deltaTimeNs = currentTime - lastFrameTime
@@ -76,8 +80,10 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
                         // Update
                         nativeUpdate(deltaTime)
 
-                        // Render
-                        nativeRender()
+                        // Render only if surface is ready
+                        if (surfaceReady) {
+                            nativeRender()
+                        }
 
                         // FPS tracking
                         frameCount++
@@ -110,6 +116,7 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
         if (!running) return
         android.util.Log.d("AndroidWgpuGameLoop", "Resizing to: ${width}x${height}")
         nativeResize(width, height)
+        surfaceReady = true // Mark surface as ready after first resize
     }
 
     override fun end() {
