@@ -237,15 +237,29 @@ fn init_wgpu_internal(
         };
 
     let surface_caps = surface.get_capabilities(&adapter);
-    // Use the first format reported by the surface capabilities.
-    // This is the "preferred" format and is essentially guaranteed to work.
-    // Explicitly searching for sRGB can cause allocation failures on some Android devices/emulators
-    // if the driver reports support but the hardware composer rejects the specific usage/format combo.
-    let surface_format = surface_caps
-        .formats
-        .first()
+
+    // Pick a conservative, widely supported format. Some Android devices report exotic
+    // formats first that gralloc cannot actually allocate for small render targets,
+    // which leads to repeated 4x4 allocation failures. Prefer standard RGBA8/BGRA8
+    // formats and only fall back to the first reported format if none are available.
+    let preferred_formats = [
+        wgpu::TextureFormat::Bgra8UnormSrgb,
+        wgpu::TextureFormat::Bgra8Unorm,
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+        wgpu::TextureFormat::Rgba8Unorm,
+    ];
+
+    let surface_format = preferred_formats
+        .iter()
         .copied()
-        .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
+        .find(|f| surface_caps.formats.contains(f))
+        .unwrap_or_else(|| {
+            surface_caps
+                .formats
+                .first()
+                .copied()
+                .unwrap_or(wgpu::TextureFormat::Bgra8Unorm)
+        });
 
     let max_dimension = device.limits().max_texture_dimension_2d;
     let width = width.min(max_dimension);
@@ -412,6 +426,15 @@ fn render_internal() {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("Failed to get current texture: {:?}", e);
+                    match e {
+                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::OutOfMemory => {
+                            // Drop WGPU state; caller should reinitialize on next valid surface
+                            log::error!("Surface lost or out of memory, resetting WGPU_STATE");
+                            guard.0 = None;
+                            INITIALIZED.store(false, Ordering::Relaxed);
+                        }
+                        _ => {}
+                    }
                     return;
                 }
             };

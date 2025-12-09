@@ -170,7 +170,13 @@ xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphoneos \
 export PATH="$PATH:/Users/kamran/Library/Android/sdk/platform-tools"
 ./gradlew :composeApp:assembleDebug
 adb devices -l
-adb install /Users/kamran/PhysicsFX/composeApp/build/outputs/apk/debug/app-debug.apk
-adb install -s <deviceId> /Users/kamran/PhysicsFX/composeApp/build/outputs/apk/debug/app-debug.apk
+adb install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
+adb install -s <deviceId> ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
+adb shell am start -n app.kamkash.physicsfx/.MainActivity
+adb shell am stop-app app.kamkash.physicsfx
+
+
+adb logcat --pid=$(adb shell pidof app.kamkash.physicsfx) -v time > a.out
+
 ```
 

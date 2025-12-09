@@ -3,15 +3,22 @@ package app.kamkash.physicsfx
 import android.view.Surface
 import kotlinx.coroutines.*
 
+object AndroidWgpuConfig {
+    // Set to true only when you explicitly want to exercise the native wgpu path
+    // on a device you trust. Default is false for stability.
+    const val ENABLE_NATIVE_WGPU: Boolean = true
+}
+
 class AndroidWgpuGameLoop : WgpuGameLoop {
     private var running = false
     private var gameLoopJob: Job? = null
-    private val gameScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    // Run the game loop on the main thread to match surface / device ownership
+    private val gameScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
     private var lastFrameTime = System.nanoTime()
     private var frameCount = 0
     private var fpsTimer = 0.0
-    private var surfaceReady = false
+    @Volatile private var surfaceReady = false
 
     // Native methods - surface is android.view.Surface object
     private external fun nativeInit(surface: Surface, width: Int, height: Int): Boolean
@@ -23,6 +30,8 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
     companion object {
         const val TARGET_FPS = 60
         const val FRAME_TIME_NS = 1_000_000_000L / TARGET_FPS
+        // For sparse rendering test, render at most once per second when enabled
+        const val RENDER_INTERVAL_SEC = 1.0f
 
         init {
             System.loadLibrary("physics_core")
@@ -35,7 +44,60 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
             return
         }
 
-        android.util.Log.d("AndroidWgpuGameLoop", "Starting game loop: ${width}x${height}")
+        if (width <= 0 || height <= 0) {
+            android.util.Log.w(
+                    "AndroidWgpuGameLoop",
+                    "Ignoring start with non-positive size: ${width}x${height}"
+            )
+            return
+        }
+
+        if (!AndroidWgpuConfig.ENABLE_NATIVE_WGPU) {
+            // SAFE DEFAULT: no native wgpu, just a Kotlin timing loop
+            android.util.Log.d(
+                    "AndroidWgpuGameLoop",
+                    "Starting game loop in SAFE mode (no native wgpu): ${width}x${height}"
+            )
+            running = true
+            surfaceReady = false
+            lastFrameTime = System.nanoTime()
+
+            gameLoopJob =
+                    gameScope.launch {
+                        while (running && isActive) {
+                            val currentTime = System.nanoTime()
+                            val deltaTimeNs = currentTime - lastFrameTime
+                            lastFrameTime = currentTime
+
+                            val deltaTime = deltaTimeNs / 1_000_000_000.0f
+
+                            // FPS tracking only
+                            frameCount++
+                            fpsTimer += deltaTime
+                            if (fpsTimer >= 1.0f) {
+                                android.util.Log.d(
+                                        "AndroidWgpuGameLoop",
+                                        "(SAFE no-native) FPS ticks: $frameCount"
+                                )
+                                frameCount = 0
+                                fpsTimer = 0.0
+                            }
+
+                            val frameTimeElapsed = System.nanoTime() - currentTime
+                            val sleepTime = FRAME_TIME_NS - frameTimeElapsed
+                            if (sleepTime > 0) {
+                                delay(sleepTime / 1_000_000)
+                            }
+                        }
+                    }
+            return
+        }
+
+        // EXPERIMENTAL: native wgpu path (use only on trusted devices)
+        android.util.Log.d(
+                "AndroidWgpuGameLoop",
+                "Starting game loop (native wgpu ENABLED): ${width}x${height}"
+        )
 
         // surfaceHandle must be an android.view.Surface
         val surface: Surface =
@@ -54,7 +116,6 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
                     }
                 }
 
-        // Initialize wgpu with the Surface
         val initialized = nativeInit(surface, width, height)
         if (!initialized) {
             android.util.Log.e("AndroidWgpuGameLoop", "Failed to initialize wgpu")
@@ -62,13 +123,12 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
         }
 
         running = true
+        surfaceReady = false
         lastFrameTime = System.nanoTime()
 
-        // Start game loop coroutine
         gameLoopJob =
                 gameScope.launch {
-                    // Give Vulkan swapchain time to initialize
-                    delay(100)
+                    var timeSinceLastRender = 0.0f
 
                     while (running && isActive) {
                         val currentTime = System.nanoTime()
@@ -77,28 +137,42 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
 
                         val deltaTime = deltaTimeNs / 1_000_000_000.0f
 
-                        // Update
-                        nativeUpdate(deltaTime)
-
-                        // Render only if surface is ready
-                        if (surfaceReady) {
-                            nativeRender()
+                        timeSinceLastRender += deltaTime
+                        if (timeSinceLastRender >= RENDER_INTERVAL_SEC) {
+                            android.util.Log.d(
+                                    "AndroidWgpuGameLoop",
+                                    "Calling nativeUpdate/render after ${timeSinceLastRender}s"
+                            )
+                            try {
+                                nativeUpdate(timeSinceLastRender)
+                                nativeRender()
+                            } catch (t: Throwable) {
+                                android.util.Log.e(
+                                        "AndroidWgpuGameLoop",
+                                        "Error in nativeUpdate/render: ${t.message}",
+                                        t
+                                )
+                                running = false
+                                break
+                            }
+                            timeSinceLastRender = 0.0f
                         }
 
-                        // FPS tracking
                         frameCount++
                         fpsTimer += deltaTime
-                        if (fpsTimer >= 1.0) {
-                            android.util.Log.d("AndroidWgpuGameLoop", "FPS: $frameCount")
+                        if (fpsTimer >= 1.0f) {
+                            android.util.Log.d(
+                                    "AndroidWgpuGameLoop",
+                                    "(native sparse-render) FPS ticks: $frameCount"
+                            )
                             frameCount = 0
                             fpsTimer = 0.0
                         }
 
-                        // Frame pacing
                         val frameTimeElapsed = System.nanoTime() - currentTime
                         val sleepTime = FRAME_TIME_NS - frameTimeElapsed
                         if (sleepTime > 0) {
-                            delay(sleepTime / 1_000_000) // Convert to ms
+                            delay(sleepTime / 1_000_000)
                         }
                     }
                 }
@@ -113,10 +187,21 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
     }
 
     override fun resize(width: Int, height: Int) {
-        if (!running) return
-        android.util.Log.d("AndroidWgpuGameLoop", "Resizing to: ${width}x${height}")
-        nativeResize(width, height)
-        surfaceReady = true // Mark surface as ready after first resize
+        if (!running || width <= 0 || height <= 0) return
+
+        if (!AndroidWgpuConfig.ENABLE_NATIVE_WGPU) {
+            android.util.Log.d(
+                    "AndroidWgpuGameLoop",
+                    "Ignoring resize in SAFE mode: ${width}x${height}"
+            )
+            return
+        }
+
+        android.util.Log.d(
+                "AndroidWgpuGameLoop",
+                "Ignoring resize in native sparse-render mode: ${width}x${height}"
+        )
+        // If you later want to exercise nativeResize, wire it here.
     }
 
     override fun end() {
@@ -124,13 +209,14 @@ class AndroidWgpuGameLoop : WgpuGameLoop {
 
         android.util.Log.d("AndroidWgpuGameLoop", "Stopping game loop")
         running = false
+        surfaceReady = false
 
-        // Cancel game loop
         gameLoopJob?.cancel()
-        runBlocking { gameLoopJob?.join() }
+        gameLoopJob = null
 
-        // Cleanup wgpu
-        nativeShutdown()
+        if (AndroidWgpuConfig.ENABLE_NATIVE_WGPU) {
+            nativeShutdown()
+        }
     }
 
     override fun isRunning(): Boolean = running
