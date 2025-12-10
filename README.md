@@ -178,5 +178,10 @@ adb shell am stop-app app.kamkash.physicsfx
 
 adb logcat --pid=$(adb shell pidof app.kamkash.physicsfx) -v time > a.out
 
+
+adb kill-server
+adb start-server
+adb devices
+
 ```
 
