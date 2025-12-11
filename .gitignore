@@ -1,0 +1,10 @@
+.vscode/
+.*
+*.pt
+*.so
+*.dylib
+*.a
+*.a.*
+build/
+dist/
+target/

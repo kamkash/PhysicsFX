@@ -127,6 +127,7 @@ android {
 dependencies {
     debugImplementation(compose.uiTooling)
     implementation(libs.androidx.games.activity)
+    implementation(libs.androidx.appcompat)
 }
 
 compose.desktop {

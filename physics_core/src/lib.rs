@@ -848,11 +848,12 @@ pub extern "C" fn android_main(app: AndroidApp) {
             |event| match event {
                 PollEvent::Main(MainEvent::Destroy) => {
                     log::info!("MainEvent::Destroy");
-                    // shutdown_internal(); // Uncomment if defined
+                    shutdown_internal();
                     quit = true;
                 }
 
                 PollEvent::Main(MainEvent::InitWindow { .. }) => {
+                    log::info!("MainEvent::InitWindow");
                     if let Some(window) = app.native_window() {
                         let window_ptr = window.ptr().as_ptr();
 
@@ -873,7 +874,6 @@ pub extern "C" fn android_main(app: AndroidApp) {
                         let display_handle = AndroidDisplayHandle::new();
 
                         // Call your internal init (make sure signature matches)
-                        /*
                         if !init_wgpu_internal(
                             RawWindowHandle::AndroidNdk(window_handle),
                             RawDisplayHandle::Android(display_handle),
@@ -883,11 +883,11 @@ pub extern "C" fn android_main(app: AndroidApp) {
                             log::error!("Failed to initialize wgpu");
                             quit = true;
                         }
-                        */
                     }
                 }
 
                 PollEvent::Main(MainEvent::WindowResized { .. }) => {
+                    log::info!("MainEvent::WindowResized ");
                     if let Some(window) = app.native_window() {
                         let window_ptr = window.ptr().as_ptr();
                         let non_null_ptr = NonNull::new(window_ptr).unwrap();
@@ -898,7 +898,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
                         let width = native_window.width();
                         let height = native_window.height();
 
-                        // resize_internal(width as u32, height as u32);
+                        resize_internal(width as u32, height as u32);
                     }
                 }
 
@@ -911,7 +911,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
         );
 
         if redraw_requested {
-            // render_internal();
+            render_internal();
             redraw_requested = false;
         }
     }
