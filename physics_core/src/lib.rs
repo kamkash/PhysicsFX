@@ -2,25 +2,36 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-
-#[allow(unused_imports)]
-#[cfg(target_os = "android")]
-use ndk::native_window::NativeWindow;
+use std::ffi::c_void; // Needed for casting
+use std::ptr::NonNull;
 use once_cell::sync::Lazy;
 use raw_window_handle::{
     HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 use wgpu::util::DeviceExt;
 
+#[cfg(target_os = "android")]
+use android_activity::{
+    input::{InputEvent, MotionAction},
+    AndroidApp, InputStatus, MainEvent, PollEvent,
+};
+#[cfg(target_os = "android")]
+use android_logger::Config;
+#[cfg(target_os = "android")]
+use log::LevelFilter;
+#[cfg(target_os = "android")]
+use raw_window_handle::{AndroidDisplayHandle, AndroidNdkWindowHandle};
+#[cfg(target_os = "android")]
+use ndk::native_window::NativeWindow;
 #[cfg(feature = "jni_support")]
 use jni::objects::JClass;
 #[cfg(feature = "jni_support")]
 use jni::sys::{jboolean, jfloat, jint, jlong};
 #[cfg(feature = "jni_support")]
 use jni::JNIEnv;
-
 #[cfg(feature = "wasm_support")]
 use wasm_bindgen::prelude::*;
+
 
 // Global state for game loop
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -721,7 +732,6 @@ pub extern "system" fn Java_app_kamkash_physicsfx_JvmWgpuGameLoop_nativeShutdown
 // --- Winit Standalone App (for JVM Debugging) ---
 
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-
 pub fn start_winit_app() {
     use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
@@ -804,35 +814,11 @@ pub extern "system" fn Java_app_kamkash_physicsfx_JvmWgpuGameLoop_nativeStartWin
     start_winit_app();
 }
 
-#[allow(unused_imports)]
-#[cfg(target_os = "android")]
-use android_activity::{
-    input::{InputEvent, MotionAction},
-    AndroidApp, InputStatus, MainEvent, PollEvent,
-};
-#[allow(unused_imports)]
-#[cfg(target_os = "android")]
-use android_logger::Config;
-#[allow(unused_imports)]
-#[cfg(target_os = "android")]
-use log::LevelFilter;
-#[cfg(target_os = "android")]
-use raw_window_handle::{AndroidDisplayHandle, AndroidNdkWindowHandle};
-use std::ffi::c_void; // Needed for casting
-use std::ptr::NonNull;
 
-#[allow(unused_variables)]
 #[cfg(target_os = "android")]
-// #[d_activity::android_main( // Fix 1: Use fully qualified path
-//     android_logger_tag = "physics_core",
-//     config(
-//         theme = "@android:style/Theme.NoTitleBar.Fullscreen",
-//         orientation = "landscape",
-//         screen_size = "smallest|screen_layout|screen_size|smallest_screen_size",
-//         ime_options = "actionDone"
-//     )
-// )]
-fn main(app: AndroidApp) {
+#[no_mangle]
+// #[::android_activity::android_main]
+pub extern "C" fn android_main(app: AndroidApp) {
     android_logger::init_once(
         Config::default()
             .with_max_level(LevelFilter::Trace)
