@@ -3,6 +3,9 @@ use std::os::raw::c_char;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+#[allow(unused_imports)]
+#[cfg(target_os = "android")]
+use ndk::native_window::NativeWindow;
 use once_cell::sync::Lazy;
 use raw_window_handle::{
     HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -715,440 +718,13 @@ pub extern "system" fn Java_app_kamkash_physicsfx_JvmWgpuGameLoop_nativeShutdown
     wgpu_shutdown();
 }
 
-#[cfg(feature = "jni_support")]
-#[no_mangle]
-pub extern "system" fn Java_app_kamkash_physicsfx_AndroidWgpuGameLoop_nativeInit(
-    env: JNIEnv,
-    _class: JClass,
-    surface: jni::objects::JObject,
-    width: jint,
-    height: jint,
-) -> jboolean {
-    #[cfg(target_os = "android")]
-    {
-        // Get ANativeWindow from Surface object
-        let native_window = unsafe {
-            let ptr = ndk_sys::ANativeWindow_fromSurface(
-                env.get_raw() as *mut _,
-                surface.as_raw() as *mut _,
-            );
-            if ptr.is_null() {
-                log::error!("Failed to get ANativeWindow from Surface");
-                return false as jboolean;
-            }
-            ptr
-        };
-
-        wgpu_init(
-            native_window as *mut std::ffi::c_void,
-            width as i32,
-            height as i32,
-        ) as jboolean
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        log::warn!("Android native init called on non-Android platform");
-        false as jboolean
-    }
-}
-
-#[cfg(feature = "jni_support")]
-#[no_mangle]
-pub extern "system" fn Java_app_kamkash_physicsfx_AndroidWgpuGameLoop_nativeUpdate(
-    _env: JNIEnv,
-    _class: JClass,
-    delta_time: jfloat,
-) {
-    wgpu_update(delta_time as f32);
-}
-
-#[cfg(feature = "jni_support")]
-#[no_mangle]
-pub extern "system" fn Java_app_kamkash_physicsfx_AndroidWgpuGameLoop_nativeRender(
-    _env: JNIEnv,
-    _class: JClass,
-) {
-    wgpu_render();
-}
-
-#[cfg(feature = "jni_support")]
-#[no_mangle]
-pub extern "system" fn Java_app_kamkash_physicsfx_AndroidWgpuGameLoop_nativeResize(
-    _env: JNIEnv,
-    _class: JClass,
-    width: jint,
-    height: jint,
-) {
-    wgpu_resize(width as i32, height as i32);
-}
-
-#[cfg(feature = "jni_support")]
-#[no_mangle]
-pub extern "system" fn Java_app_kamkash_physicsfx_AndroidWgpuGameLoop_nativeShutdown(
-    _env: JNIEnv,
-    _class: JClass,
-) {
-    wgpu_shutdown();
-}
-
-// --- Wasm Interface ---
-
-#[cfg(feature = "wasm_support")]
-#[wasm_bindgen]
-pub fn wasm_get_info() -> String {
-    get_internal_info()
-}
-
-#[cfg(feature = "wasm_support")]
-#[wasm_bindgen]
-pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
-    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    let _ = console_log::init_with_level(log::Level::Info);
-    log::info!(
-        "wasm_init called: canvas={}, {}x{}",
-        canvas_id,
-        width,
-        height
-    );
-
-    // For WASM, we use web_sys to get the canvas element
-    use wasm_bindgen::JsCast;
-
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => {
-            log::error!("No window available");
-            return false;
-        }
-    };
-
-    let document = match window.document() {
-        Some(d) => d,
-        None => {
-            log::error!("No document available");
-            return false;
-        }
-    };
-
-    let canvas = match document.get_element_by_id(canvas_id) {
-        Some(c) => c,
-        None => {
-            log::error!("Canvas element '{}' not found", canvas_id);
-            return false;
-        }
-    };
-
-    let canvas: web_sys::HtmlCanvasElement = match canvas.dyn_into() {
-        Ok(c) => c,
-        Err(_) => {
-            log::error!("Element '{}' is not a canvas", canvas_id);
-            return false;
-        }
-    };
-
-    // Set initial scale factor - REMOVED wgpu_set_scale_factor calls
-    // Attach Input Listeners - REMOVED
-
-    // Apply debug style to the EXISTING canvas to verify we have it
-    // We wrap these in a block and ignore errors just in case
-
-    log::info!("Acquired existing canvas: {}", canvas_id);
-
-    // Helper function to try initializing a specific backend
-    let init_backend = |backend: wgpu::Backends, canvas: web_sys::HtmlCanvasElement| async move {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: backend,
-            ..Default::default()
-        });
-
-        let surface = match instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())) {
-            Ok(s) => s,
-            Err(e) => return Err(format!("Failed to create surface: {:?}", e)),
-        };
-
-        let adapter = match instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-        {
-            Ok(a) => a,
-            Err(_) => return Err("Failed to find suitable adapter".to_string()),
-        };
-
-        log::info!("Adapter backend: {:?}", adapter.get_info().backend);
-        log::info!("Adapter limits: {:?}", adapter.limits());
-
-        let requested_limits = if backend == wgpu::Backends::BROWSER_WEBGPU {
-            // For WebGPU, trust the adapter to handle its own limits
-            adapter.limits()
-        } else {
-            // For WebGL, use safe downlevel defaults but try to bump texture size
-            let mut limits = wgpu::Limits::downlevel_webgl2_defaults();
-            let adapter_limits = adapter.limits();
-            limits.max_texture_dimension_2d = adapter_limits.max_texture_dimension_2d;
-            limits
-        };
-
-        log::info!("Requesting limits: {:?}", requested_limits);
-
-        let (device, queue) = match adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("physics_core device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: requested_limits,
-                ..Default::default()
-            })
-            .await
-        {
-            Ok(dq) => dq,
-            Err(e) => return Err(format!("Failed to request device: {:?}", e)),
-        };
-
-        Ok((instance, surface, adapter, device, queue))
-    };
-
-    // Try WebGPU first
-    let result = match init_backend(wgpu::Backends::BROWSER_WEBGPU, canvas.clone()).await {
-        Ok(res) => Ok(res),
-        Err(e) => {
-            log::warn!(
-                "WebGPU initialization failed: {}. Replacing canvas and falling back to WebGL...",
-                e
-            );
-
-            // Replace the canvas to clear any tainted context
-            let parent = canvas.parent_node().unwrap();
-            let new_canvas_node = canvas.clone_node().unwrap();
-            parent.replace_child(&new_canvas_node, &canvas).unwrap();
-
-            let new_canvas: web_sys::HtmlCanvasElement = new_canvas_node.dyn_into().unwrap();
-
-            init_backend(wgpu::Backends::GL, new_canvas).await
-        }
-    };
-
-    let (instance, surface, adapter, device, queue) = match result {
-        Ok(res) => res,
-        Err(e) => {
-            log::error!("Final initialization failed: {}", e);
-            return false;
-        }
-    };
-
-    log::info!("Device acquired. getting surface caps...");
-
-    let surface_caps = surface.get_capabilities(&adapter);
-    log::info!(
-        "Surface caps acquired. Alpha Modes: {:?}",
-        surface_caps.alpha_modes
-    );
-
-    let surface_format = surface_caps
-        .formats
-        .iter()
-        .copied()
-        .find(|f| f.is_srgb())
-        .unwrap_or(surface_caps.formats[0]);
-    log::info!("Selected surface format: {:?}", surface_format);
-
-    let max_dimension = device.limits().max_texture_dimension_2d;
-
-    let config = wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: surface_format,
-        width: width.min(max_dimension),
-        height: height.min(max_dimension),
-        present_mode: wgpu::PresentMode::AutoVsync,
-        alpha_mode: surface_caps.alpha_modes[0],
-        view_formats: vec![],
-        desired_maximum_frame_latency: 2,
-    };
-    log::info!("Surface config created: {}x{}", config.width, config.height);
-
-    surface.configure(&device, &config);
-    log::info!("Surface configured");
-    let (texture_view, sampler) = create_texture(&device, &queue);
-
-    let texture_bind_group_layout =
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-            label: Some("texture_bind_group_layout"),
-        });
-
-    let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &texture_bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&texture_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&sampler),
-            },
-        ],
-        label: Some("diffuse_bind_group"),
-    });
-
-    // Shader setup
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Shader"),
-        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("shader.wgsl"))),
-    });
-
-    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &[&texture_bind_group_layout],
-        push_constant_ranges: &[],
-    });
-
-    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
-        layout: Some(&render_pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: Some("vs_main"),
-            buffers: &[Vertex::desc()],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: config.format,
-                blend: Some(wgpu::BlendState::REPLACE),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
-            polygon_mode: wgpu::PolygonMode::Fill,
-            unclipped_depth: false,
-            conservative: false,
-        },
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-        multiview: None,
-        cache: None,
-    });
-
-    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Vertex Buffer"),
-        contents: bytemuck::cast_slice(VERTICES),
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-
-    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Index Buffer"),
-        contents: bytemuck::cast_slice(INDICES),
-        usage: wgpu::BufferUsages::INDEX,
-    });
-
-    let state = WgpuState {
-        instance,
-        device,
-        queue,
-        surface,
-        config,
-        render_pipeline,
-        vertex_buffer,
-        index_buffer,
-        diffuse_bind_group,
-    };
-
-    if let Ok(mut guard) = WGPU_STATE.lock() {
-        guard.0 = Some(state);
-    }
-
-    match INITIALIZED.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed) {
-        Ok(_) => log::info!("WASM wgpu initialized successfully"),
-        Err(_) => log::warn!("WASM wgpu already initialized"),
-    }
-
-    true
-}
-
-#[cfg(feature = "wasm_support")]
-#[wasm_bindgen]
-pub fn wasm_update(delta_time: f32) {
-    wgpu_update(delta_time);
-}
-
-#[cfg(feature = "wasm_support")]
-#[wasm_bindgen]
-pub fn wasm_render() {
-    // log::info!("wasm_render called");
-    render_internal();
-}
-
-#[cfg(feature = "wasm_support")]
-#[wasm_bindgen]
-pub fn wasm_resize(width: u32, height: u32) {
-    if width == 0 || height == 0 {
-        return;
-    }
-
-    if let Ok(mut guard) = WGPU_STATE.lock() {
-        if let Some(state) = guard.0.as_mut() {
-            let max_dimension = state.device.limits().max_texture_dimension_2d;
-            let clamped_width = width.min(max_dimension);
-            let clamped_height = height.min(max_dimension);
-
-            log::info!(
-                "wasm_resize: {}x{} -> clamped {}x{}",
-                width,
-                height,
-                clamped_width,
-                clamped_height
-            );
-
-            state.config.width = clamped_width;
-            state.config.height = clamped_height;
-            state.surface.configure(&state.device, &state.config);
-        }
-    }
-}
-
-#[cfg(feature = "wasm_support")]
-#[wasm_bindgen]
-pub fn wasm_shutdown() {
-    wgpu_shutdown();
-}
-
 // --- Winit Standalone App (for JVM Debugging) ---
 
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+
 pub fn start_winit_app() {
     use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+
     use winit::{
         event::{Event, WindowEvent},
         event_loop::EventLoop,
@@ -1156,6 +732,7 @@ pub fn start_winit_app() {
     };
 
     let event_loop = EventLoop::new().unwrap();
+
     let window = std::sync::Arc::new(
         WindowBuilder::new()
             .with_title("PhysicsFX (Rust Winit)")
@@ -1165,12 +742,18 @@ pub fn start_winit_app() {
     );
 
     let width = window.inner_size().width;
+
     let height = window.inner_size().height;
+
     let window_handle = window.window_handle().unwrap().as_raw();
+
     let display_handle = window.display_handle().unwrap().as_raw();
+
     // Note: init_wgpu_internal expects rwh::RawWindowHandle, etc.
+
     if !init_wgpu_internal(window_handle, display_handle, width, height) {
         log::error!("Failed to initialize wgpu");
+
         return;
     }
 
@@ -1178,23 +761,32 @@ pub fn start_winit_app() {
         .run(|event, target| match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => target.exit(),
+
                 WindowEvent::Resized(size) => {
                     let width = size.width;
+
                     let height = size.height;
+
                     if width > 0 && height > 0 {
                         resize_internal(width, height);
+
                         window.request_redraw();
                     }
                 }
+
                 WindowEvent::RedrawRequested => {
                     render_internal();
+
                     window.request_redraw();
                 }
+
                 _ => (),
             },
+
             Event::AboutToWait => {
                 window.request_redraw();
             }
+
             _ => (),
         })
         .unwrap();
@@ -1202,10 +794,139 @@ pub fn start_winit_app() {
 
 #[cfg(feature = "jni_support")]
 #[no_mangle]
+
 pub extern "system" fn Java_app_kamkash_physicsfx_JvmWgpuGameLoop_nativeStartWinitApp(
     _env: JNIEnv,
+
     _class: JClass,
 ) {
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     start_winit_app();
+}
+
+#[allow(unused_imports)]
+#[cfg(target_os = "android")]
+use android_activity::{
+    input::{InputEvent, MotionAction},
+    AndroidApp, InputStatus, MainEvent, PollEvent,
+};
+#[allow(unused_imports)]
+#[cfg(target_os = "android")]
+use android_logger::Config;
+#[allow(unused_imports)]
+#[cfg(target_os = "android")]
+use log::LevelFilter;
+#[cfg(target_os = "android")]
+use raw_window_handle::{AndroidDisplayHandle, AndroidNdkWindowHandle};
+use std::ffi::c_void; // Needed for casting
+use std::ptr::NonNull;
+
+#[allow(unused_variables)]
+#[cfg(target_os = "android")]
+// #[d_activity::android_main( // Fix 1: Use fully qualified path
+//     android_logger_tag = "physics_core",
+//     config(
+//         theme = "@android:style/Theme.NoTitleBar.Fullscreen",
+//         orientation = "landscape",
+//         screen_size = "smallest|screen_layout|screen_size|smallest_screen_size",
+//         ime_options = "actionDone"
+//     )
+// )]
+fn main(app: AndroidApp) {
+    android_logger::init_once(
+        Config::default()
+            .with_max_level(LevelFilter::Trace)
+            .with_tag("physics_core"),
+    );
+
+    let mut quit = false;
+    let mut redraw_requested = true;
+
+    while !quit {
+        if let Ok(mut iter) = app.input_events_iter() {
+            while iter.next(|event| {
+                match event {
+                    InputEvent::MotionEvent(motion) => {
+                        if motion.action() == MotionAction::Up {
+                            log::info!("Touch up event");
+                        }
+                    }
+                    _ => {}
+                }
+                android_activity::InputStatus::Handled
+            }) {}
+        }
+
+        app.poll_events(
+            Some(std::time::Duration::from_millis(16)),
+            |event| match event {
+                PollEvent::Main(MainEvent::Destroy) => {
+                    log::info!("MainEvent::Destroy");
+                    // shutdown_internal(); // Uncomment if defined
+                    quit = true;
+                }
+
+                PollEvent::Main(MainEvent::InitWindow { .. }) => {
+                    if let Some(window) = app.native_window() {
+                        let window_ptr = window.ptr().as_ptr();
+
+                        // Fix 3: Wrap pointer in NonNull for NDK
+                        let non_null_ptr = NonNull::new(window_ptr).unwrap();
+
+                        let native_window =
+                            unsafe { ndk::native_window::NativeWindow::from_ptr(non_null_ptr) };
+
+                        let width = native_window.width();
+                        let height = native_window.height();
+
+                        // Fix 4: Cast to c_void for raw-window-handle
+                        // window_ptr is *mut ANativeWindow, we need NonNull<c_void>
+                        let mut window_handle =
+                            AndroidNdkWindowHandle::new(non_null_ptr.cast::<c_void>());
+
+                        let display_handle = AndroidDisplayHandle::new();
+
+                        // Call your internal init (make sure signature matches)
+                        /*
+                        if !init_wgpu_internal(
+                            RawWindowHandle::AndroidNdk(window_handle),
+                            RawDisplayHandle::Android(display_handle),
+                            width as u32,
+                            height as u32,
+                        ) {
+                            log::error!("Failed to initialize wgpu");
+                            quit = true;
+                        }
+                        */
+                    }
+                }
+
+                PollEvent::Main(MainEvent::WindowResized { .. }) => {
+                    if let Some(window) = app.native_window() {
+                        let window_ptr = window.ptr().as_ptr();
+                        let non_null_ptr = NonNull::new(window_ptr).unwrap();
+
+                        let native_window =
+                            unsafe { ndk::native_window::NativeWindow::from_ptr(non_null_ptr) };
+
+                        let width = native_window.width();
+                        let height = native_window.height();
+
+                        // resize_internal(width as u32, height as u32);
+                    }
+                }
+
+                PollEvent::Main(MainEvent::RedrawNeeded { .. }) => {
+                    redraw_requested = true;
+                }
+
+                _ => {}
+            },
+        );
+
+        if redraw_requested {
+            // render_internal();
+            redraw_requested = false;
+        }
+    }
 }

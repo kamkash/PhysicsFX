@@ -64,8 +64,9 @@ kotlin {
     
     sourceSets {
         androidMain.dependencies {
-            implementation(compose.preview)
-            implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.appcompat)
+            implementation(libs.androidx.lifecycle.viewmodelCompose)
+            implementation(libs.androidx.lifecycle.runtimeCompose)
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -74,8 +75,6 @@ kotlin {
             implementation(compose.ui)
             implementation(compose.components.resources)
             implementation(compose.components.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodelCompose)
-            implementation(libs.androidx.lifecycle.runtimeCompose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -92,6 +91,9 @@ kotlin {
 android {
     namespace = "app.kamkash.physicsfx"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
+     buildFeatures {
+        prefab = true
+    }
 
     sourceSets {
         getByName("main") {
@@ -124,6 +126,7 @@ android {
 
 dependencies {
     debugImplementation(compose.uiTooling)
+    implementation(libs.androidx.games.activity)
 }
 
 compose.desktop {
@@ -245,7 +248,7 @@ tasks.register("buildRustAndroid") {
         for (target in targets) {
             exec {
                 workingDir = rustDir
-                commandLine("cargo", "ndk", "--target", target, "--platform", "24", "build", "--release", "--features", "jni_support")
+                commandLine("cargo", "ndk", "--target", target, "--platform", "24", "build", "--release")
             }
         }
         

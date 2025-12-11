@@ -11,6 +11,8 @@
         <activity
             android:exported="true"
             android:name=".MainActivity">
+            <meta-data android:name="android.app.lib_name"
+                       android:value="physics_core" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
