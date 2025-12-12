@@ -441,6 +441,15 @@ fn resize_internal(width: u32, height: u32) {
     }
 }
 
+fn update_internal(dt: f32) {
+    if let Ok(guard) = WGPU_STATE.lock() {
+        if let Some(state) = &guard.0 {
+            // TODO: Update UI or simulation state
+            // log::trace!("update_internal: dt={}", dt); 
+        }
+    }
+}
+
 fn render_internal() {
     log::info!("render_internal called");
     log::info!("render_internal: locking mutex");
@@ -654,6 +663,7 @@ pub extern "C" fn wgpu_update(delta_time: f32) {
     }
     // TODO: Update game logic
     log::trace!("wgpu_update: dt={}", delta_time);
+    update_internal(delta_time);
 }
 
 #[no_mangle]
@@ -1113,6 +1123,7 @@ pub fn start_winit_app() {
     };
 
     let event_loop = EventLoop::new().unwrap();
+    let mut last_frame_time = std::time::Instant::now();
 
     let window = std::sync::Arc::new(
         WindowBuilder::new()
@@ -1163,6 +1174,11 @@ pub fn start_winit_app() {
                 }
 
                 WindowEvent::RedrawRequested => {
+                    let now = std::time::Instant::now();
+                    let dt = now.duration_since(last_frame_time).as_secs_f32();
+                    last_frame_time = now;
+                    
+                    update_internal(dt);
                     render_internal();
 
                     window.request_redraw();
@@ -1205,6 +1221,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
     let mut quit = false;
     let mut suspended = false;
     let mut redraw_requested = true;
+    let mut last_frame_time = std::time::Instant::now();
 
     while !quit {
         if let Ok(mut iter) = app.input_events_iter() {
@@ -1347,6 +1364,11 @@ pub extern "C" fn android_main(app: AndroidApp) {
         );
 
         if redraw_requested && !suspended {
+            let now = std::time::Instant::now();
+            let dt = now.duration_since(last_frame_time).as_secs_f32();
+            last_frame_time = now;
+
+            update_internal(dt);
             render_internal();
             redraw_requested = false;
         }
