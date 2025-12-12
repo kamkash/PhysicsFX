@@ -10,6 +10,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use wgpu::util::DeviceExt;
 
+extern "C" {
+    fn ANativeWindow_acquire(window: *mut c_void);
+    fn ANativeWindow_getHeight(window: *mut c_void) -> i32;
+    fn ANativeWindow_getWidth(window: *mut c_void) -> i32;
+}
+
 #[cfg(target_os = "android")]
 use android_activity::{
     input::{InputEvent, MotionAction},
@@ -92,6 +98,7 @@ struct WgpuState {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     diffuse_bind_group: wgpu::BindGroup,
+    window_ptr: *mut c_void, // Debug: track window pointer
 }
 
 // Wrapper to force Send/Sync for WASM where we know it's single-threaded
@@ -99,6 +106,7 @@ struct WgpuStateWrapper(Option<WgpuState>);
 
 unsafe impl Send for WgpuStateWrapper {}
 unsafe impl Sync for WgpuStateWrapper {}
+// unsafe impl Send for WgpuState {} // WgpuState contains *mut c_void which is !Send
 
 static WGPU_STATE: Lazy<Mutex<WgpuStateWrapper>> = Lazy::new(|| Mutex::new(WgpuStateWrapper(None)));
 
@@ -199,6 +207,7 @@ fn init_wgpu_internal(
     display_handle: RawDisplayHandle,
     width: u32,
     height: u32,
+    window_ptr_helper: *mut c_void, // Extra arg for tracking uniqueness
 ) -> bool {
     log::info!("Initializing wgpu with size {}x{}", width, height);
 
@@ -404,6 +413,7 @@ fn init_wgpu_internal(
         vertex_buffer,
         index_buffer,
         diffuse_bind_group,
+        window_ptr: window_ptr_helper,
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -433,8 +443,11 @@ fn resize_internal(width: u32, height: u32) {
 
 fn render_internal() {
     log::info!("render_internal called");
+    log::info!("render_internal: locking mutex");
     if let Ok(mut guard) = WGPU_STATE.lock() {
+        log::info!("render_internal: mutex locked");
         if let Some(state) = guard.0.as_mut() {
+            log::info!("render_internal: getting current texture");
             let output = match state.surface.get_current_texture() {
                 Ok(o) => o,
                 Err(e) => {
@@ -621,7 +634,13 @@ pub extern "C" fn wgpu_init(
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        init_wgpu_internal(window_handle, display_handle, width as u32, height as u32)
+        init_wgpu_internal(
+            window_handle,
+            display_handle,
+            width as u32,
+            height as u32,
+            surface_handle,
+        )
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1112,7 +1131,14 @@ pub fn start_winit_app() {
 
     // Note: init_wgpu_internal expects rwh::RawWindowHandle, etc.
 
-    if !init_wgpu_internal(window_handle, display_handle, width, height) {
+    if !init_wgpu_internal(
+        window_handle,
+        display_handle,
+        width,
+        height,
+        std::ptr::null_mut(),
+    ) {
+        // Pass null for helper if not needed or not available easily
         log::error!("Failed to initialize wgpu");
 
         return;
@@ -1176,6 +1202,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
     );
 
     let mut quit = false;
+    let mut suspended = false;
     let mut redraw_requested = true;
 
     while !quit {
@@ -1202,17 +1229,41 @@ pub extern "C" fn android_main(app: AndroidApp) {
                     quit = true;
                 }
 
+                // PollEvent::Main(MainEvent::TermWindow { .. }) => { // Error: variant not found
+                //    log::info!("MainEvent::TermWindow");
+                //    shutdown_internal();
+                // }
+                PollEvent::Main(MainEvent::TerminateWindow { .. }) => {
+                    log::info!("MainEvent::TerminateWindow");
+                    shutdown_internal();
+                }
+
+                PollEvent::Main(MainEvent::Pause) => {
+                    log::info!("MainEvent::Pause");
+                    suspended = true;
+                }
+
+                PollEvent::Main(MainEvent::Resume { .. }) => {
+                    log::info!("MainEvent::Resume");
+                    suspended = false;
+                }
+
                 PollEvent::Main(MainEvent::InitWindow { .. }) => {
                     log::info!("MainEvent::InitWindow");
+                    suspended = false; // Ensure we are not suspended if we get a new window
                     if let Some(window) = app.native_window() {
                         let window_ptr = window.ptr().as_ptr();
+
+                        unsafe {
+                             ANativeWindow_acquire(window_ptr as *mut c_void);
+                        }
 
                         // Fix 3: Wrap pointer in NonNull for NDK
                         let non_null_ptr = NonNull::new(window_ptr).unwrap();
 
                         let native_window =
                             unsafe { ndk::native_window::NativeWindow::from_ptr(non_null_ptr) };
-
+                        
                         let width = native_window.width();
                         let height = native_window.height();
 
@@ -1229,9 +1280,10 @@ pub extern "C" fn android_main(app: AndroidApp) {
                             RawDisplayHandle::Android(display_handle),
                             width as u32,
                             height as u32,
+                            window_ptr as *mut c_void,
                         ) {
                             log::error!("Failed to initialize wgpu");
-                            quit = true;
+                            // quit = true; // Don't quit, try to recover or wait for next window
                         }
                     }
                 }
@@ -1240,6 +1292,12 @@ pub extern "C" fn android_main(app: AndroidApp) {
                     log::info!("MainEvent::WindowResized ");
                     if let Some(window) = app.native_window() {
                         let window_ptr = window.ptr().as_ptr();
+                        
+                        // Fix refcount issue
+                        unsafe {
+                            ANativeWindow_acquire(window_ptr as *mut c_void);
+                        }
+
                         let non_null_ptr = NonNull::new(window_ptr).unwrap();
 
                         let native_window =
@@ -1248,7 +1306,34 @@ pub extern "C" fn android_main(app: AndroidApp) {
                         let width = native_window.width();
                         let height = native_window.height();
 
-                        resize_internal(width as u32, height as u32);
+                        // Check if window pointer changed
+                        let mut recreate_needed = false;
+                        if let Ok(guard) = WGPU_STATE.lock() {
+                            if let Some(state) = &guard.0 {
+                                if state.window_ptr != window_ptr as *mut c_void {
+                                    log::warn!("WindowResized: Window pointer changed! Recreating surface.");
+                                    recreate_needed = true;
+                                }
+                            }
+                        }
+
+                        if recreate_needed {
+                             // Re-run init logic
+                             log::info!("Re-initializing WGPU due to window change");
+                             // logic copied/refactored from InitWindow
+                             let non_null_ptr = NonNull::new(window_ptr).unwrap();
+                             let window_handle = AndroidNdkWindowHandle::new(non_null_ptr.cast::<c_void>());
+                             let display_handle = AndroidDisplayHandle::new();
+                             init_wgpu_internal(
+                                RawWindowHandle::AndroidNdk(window_handle),
+                                RawDisplayHandle::Android(display_handle),
+                                width as u32,
+                                height as u32,
+                                window_ptr as *mut c_void,
+                            );
+                        } else {
+                            resize_internal(width as u32, height as u32);
+                        }
                     }
                 }
 
@@ -1260,7 +1345,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
             },
         );
 
-        if redraw_requested {
+        if redraw_requested && !suspended {
             render_internal();
             redraw_requested = false;
         }

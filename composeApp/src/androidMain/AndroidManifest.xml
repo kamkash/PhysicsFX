@@ -9,6 +9,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         <activity
+            android:configChanges="orientation|keyboardHidden|screenSize|uiMode"
             android:exported="true"
             android:name=".MainActivity">
             <meta-data android:name="android.app.lib_name"
