@@ -19,7 +19,7 @@ once_cell = "1.19"
 bytemuck = { version = "1.16", features = ["derive"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement", "Element", "Node", "HtmlElement", "CssStyleDeclaration"] }
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement", "Element", "Node", "HtmlElement", "CssStyleDeclaration", "Performance"] }
 wasm-bindgen-futures = "0.4.30"
 console_log = "1.0"
 console_error_panic_hook = "0.1"

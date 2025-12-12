@@ -1,0 +1,279 @@
+Type-safe project accessors is an incubating feature.
+
+> Task :composeApp:buildRustAndroid
+cargo-ndk 4.1.2
+    Building armeabi-v7a (armv7-linux-androideabi)
+   Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
+warning: unused import: `InputStatus`
+  --> src/lib.rs:22:17
+   |
+22 |     AndroidApp, InputStatus, MainEvent, PollEvent,
+   |                 ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `ndk::native_window::NativeWindow`
+  --> src/lib.rs:35:5
+   |
+35 | use ndk::native_window::NativeWindow;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `state`
+   --> src/lib.rs:455:21
+    |
+455 |         if let Some(state) = &guard.0 {
+    |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `dt`
+   --> src/lib.rs:453:20
+    |
+453 | fn update_internal(dt: f32) {
+    |                    ^^ help: if this is intentional, prefix it with an underscore: `_dt`
+
+warning: variable does not need to be mutable
+    --> src/lib.rs:1332:29
+     |
+1332 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: function `ANativeWindow_getHeight` is never used
+  --> src/lib.rs:15:8
+   |
+15 |     fn ANativeWindow_getHeight(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `ANativeWindow_getWidth` is never used
+  --> src/lib.rs:16:8
+   |
+16 |     fn ANativeWindow_getWidth(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:1256:37
+     |
+1256 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 8 warnings (run `cargo fix --lib -p physics_core` to apply 3 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.47s
+    Building arm64-v8a (aarch64-linux-android)
+   Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
+warning: unused import: `InputStatus`
+  --> src/lib.rs:22:17
+   |
+22 |     AndroidApp, InputStatus, MainEvent, PollEvent,
+   |                 ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `ndk::native_window::NativeWindow`
+  --> src/lib.rs:35:5
+   |
+35 | use ndk::native_window::NativeWindow;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `state`
+   --> src/lib.rs:455:21
+    |
+455 |         if let Some(state) = &guard.0 {
+    |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `dt`
+   --> src/lib.rs:453:20
+    |
+453 | fn update_internal(dt: f32) {
+    |                    ^^ help: if this is intentional, prefix it with an underscore: `_dt`
+
+warning: variable does not need to be mutable
+    --> src/lib.rs:1332:29
+     |
+1332 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: function `ANativeWindow_getHeight` is never used
+  --> src/lib.rs:15:8
+   |
+15 |     fn ANativeWindow_getHeight(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `ANativeWindow_getWidth` is never used
+  --> src/lib.rs:16:8
+   |
+16 |     fn ANativeWindow_getWidth(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:1256:37
+     |
+1256 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 8 warnings (run `cargo fix --lib -p physics_core` to apply 3 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.44s
+    Building x86 (i686-linux-android)
+   Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
+warning: unused import: `InputStatus`
+  --> src/lib.rs:22:17
+   |
+22 |     AndroidApp, InputStatus, MainEvent, PollEvent,
+   |                 ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `ndk::native_window::NativeWindow`
+  --> src/lib.rs:35:5
+   |
+35 | use ndk::native_window::NativeWindow;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `state`
+   --> src/lib.rs:455:21
+    |
+455 |         if let Some(state) = &guard.0 {
+    |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `dt`
+   --> src/lib.rs:453:20
+    |
+453 | fn update_internal(dt: f32) {
+    |                    ^^ help: if this is intentional, prefix it with an underscore: `_dt`
+
+warning: variable does not need to be mutable
+    --> src/lib.rs:1332:29
+     |
+1332 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: function `ANativeWindow_getHeight` is never used
+  --> src/lib.rs:15:8
+   |
+15 |     fn ANativeWindow_getHeight(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `ANativeWindow_getWidth` is never used
+  --> src/lib.rs:16:8
+   |
+16 |     fn ANativeWindow_getWidth(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:1256:37
+     |
+1256 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 8 warnings (run `cargo fix --lib -p physics_core` to apply 3 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.41s
+    Building x86_64 (x86_64-linux-android)
+   Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
+warning: unused import: `InputStatus`
+  --> src/lib.rs:22:17
+   |
+22 |     AndroidApp, InputStatus, MainEvent, PollEvent,
+   |                 ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `ndk::native_window::NativeWindow`
+  --> src/lib.rs:35:5
+   |
+35 | use ndk::native_window::NativeWindow;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `state`
+   --> src/lib.rs:455:21
+    |
+455 |         if let Some(state) = &guard.0 {
+    |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `dt`
+   --> src/lib.rs:453:20
+    |
+453 | fn update_internal(dt: f32) {
+    |                    ^^ help: if this is intentional, prefix it with an underscore: `_dt`
+
+warning: variable does not need to be mutable
+    --> src/lib.rs:1332:29
+     |
+1332 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: function `ANativeWindow_getHeight` is never used
+  --> src/lib.rs:15:8
+   |
+15 |     fn ANativeWindow_getHeight(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `ANativeWindow_getWidth` is never used
+  --> src/lib.rs:16:8
+   |
+16 |     fn ANativeWindow_getWidth(window: *mut c_void) -> i32;
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:1256:37
+     |
+1256 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 8 warnings (run `cargo fix --lib -p physics_core` to apply 3 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.40s
+
+[Incubating] Problems report is available at: file:///Users/kamran/PhysicsFX/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 2s
+1 actionable task: 1 executed

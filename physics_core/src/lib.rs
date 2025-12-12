@@ -99,6 +99,17 @@ struct WgpuState {
     index_buffer: wgpu::Buffer,
     diffuse_bind_group: wgpu::BindGroup,
     window_ptr: *mut c_void, // Debug: track window pointer
+
+    #[cfg(target_arch = "wasm32")]
+    last_render_time: f64,
+    #[cfg(not(target_arch = "wasm32"))]
+    last_render_time: std::time::Instant,
+
+    frame_count: u32,
+    #[cfg(target_arch = "wasm32")]
+    last_fps_log_time: f64,
+    #[cfg(not(target_arch = "wasm32"))]
+    last_fps_log_time: std::time::Instant,
 }
 
 // Wrapper to force Send/Sync for WASM where we know it's single-threaded
@@ -414,6 +425,16 @@ fn init_wgpu_internal(
         index_buffer,
         diffuse_bind_group,
         window_ptr: window_ptr_helper,
+        #[cfg(target_arch = "wasm32")]
+        last_render_time: web_sys::window().unwrap().performance().unwrap().now(),
+        #[cfg(not(target_arch = "wasm32"))]
+        last_render_time: std::time::Instant::now(),
+
+        frame_count: 0,
+        #[cfg(target_arch = "wasm32")]
+        last_fps_log_time: web_sys::window().unwrap().performance().unwrap().now(),
+        #[cfg(not(target_arch = "wasm32"))]
+        last_fps_log_time: std::time::Instant::now(),
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -452,6 +473,33 @@ fn update_internal(dt: f32) {
 
 fn render_internal() {
     log::info!("render_internal called");
+
+    // Throttling Logic (60 FPS Cap)
+    if let Ok(mut guard) = WGPU_STATE.lock() {
+        if let Some(state) = guard.0.as_mut() {
+             #[cfg(target_arch = "wasm32")]
+             {
+                 let now = web_sys::window().unwrap().performance().unwrap().now();
+                 let elapsed = now - state.last_render_time;
+                 // 16.6ms = 1000/60. Allow slight tolerance?
+                 if elapsed < 16.0 {
+                     return;
+                 }
+                 state.last_render_time = now;
+             }
+
+             #[cfg(not(target_arch = "wasm32"))]
+             {
+                 let now = std::time::Instant::now();
+                 let elapsed = now.duration_since(state.last_render_time);
+                 if elapsed.as_millis() < 16 {
+                     return;
+                 }
+                 state.last_render_time = now;
+             }
+        }
+    }
+
     log::info!("render_internal: locking mutex");
     if let Ok(mut guard) = WGPU_STATE.lock() {
         log::info!("render_internal: mutex locked");
@@ -516,6 +564,30 @@ fn render_internal() {
             }
             state.queue.submit(std::iter::once(encoder.finish()));
             output.present();
+
+            // FPS Logging
+            state.frame_count += 1;
+            #[cfg(target_arch = "wasm32")]
+            {
+                let now = web_sys::window().unwrap().performance().unwrap().now();
+                let elapsed = (now - state.last_fps_log_time) / 1000.0;
+                if elapsed >= 1.0 {
+                     log::info!("FPS: {:.2}", state.frame_count as f64 / elapsed);
+                     state.frame_count = 0;
+                     state.last_fps_log_time = now;
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let now = std::time::Instant::now();
+                let elapsed = now.duration_since(state.last_fps_log_time).as_secs_f64();
+                if elapsed >= 1.0 {
+                     log::info!("FPS: {:.2}", state.frame_count as f64 / elapsed);
+                     state.frame_count = 0;
+                     state.last_fps_log_time = now;
+                }
+            }
+
         } else {
             // log::warn!("WGPU_STATE is None");
         }
@@ -1049,6 +1121,16 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         index_buffer,
         diffuse_bind_group,
         window_ptr: std::ptr::null_mut(),
+        #[cfg(target_arch = "wasm32")]
+        last_render_time: web_sys::window().unwrap().performance().unwrap().now(),
+        #[cfg(not(target_arch = "wasm32"))]
+        last_render_time: std::time::Instant::now(),
+
+        frame_count: 0,
+        #[cfg(target_arch = "wasm32")]
+        last_fps_log_time: web_sys::window().unwrap().performance().unwrap().now(),
+        #[cfg(not(target_arch = "wasm32"))]
+        last_fps_log_time: std::time::Instant::now(),
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -1182,6 +1264,8 @@ pub fn start_winit_app() {
                     render_internal();
 
                     window.request_redraw();
+                    // Sleep to prevent CPU burn if redraw is fast
+                    std::thread::sleep(std::time::Duration::from_millis(10));
                 }
 
                 _ => (),
@@ -1363,14 +1447,16 @@ pub extern "C" fn android_main(app: AndroidApp) {
             },
         );
 
-        if redraw_requested && !suspended {
+        if !suspended {
             let now = std::time::Instant::now();
             let dt = now.duration_since(last_frame_time).as_secs_f32();
             last_frame_time = now;
 
             update_internal(dt);
             render_internal();
-            redraw_requested = false;
+            // redraw_requested = false; // logic removed
+            // Sleep to prevent hot loop
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
 }
