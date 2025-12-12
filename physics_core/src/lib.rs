@@ -1117,7 +1117,7 @@ pub fn start_winit_app() {
     let window = std::sync::Arc::new(
         WindowBuilder::new()
             .with_title("PhysicsFX (Rust Winit)")
-            .with_inner_size(winit::dpi::PhysicalSize::new(1280, 720))
+            .with_inner_size(winit::dpi::PhysicalSize::new(1600, 900))
             .build(&event_loop)
             .unwrap(),
     );
