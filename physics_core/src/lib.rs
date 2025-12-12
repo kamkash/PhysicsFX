@@ -1038,6 +1038,7 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         vertex_buffer,
         index_buffer,
         diffuse_bind_group,
+        window_ptr: std::ptr::null_mut(),
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -1116,7 +1117,7 @@ pub fn start_winit_app() {
     let window = std::sync::Arc::new(
         WindowBuilder::new()
             .with_title("PhysicsFX (Rust Winit)")
-            .with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
+            .with_inner_size(winit::dpi::PhysicalSize::new(1280, 720))
             .build(&event_loop)
             .unwrap(),
     );
