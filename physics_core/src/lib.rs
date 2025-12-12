@@ -17,21 +17,20 @@ use android_activity::{
 };
 #[cfg(target_os = "android")]
 use android_logger::Config;
-#[cfg(target_os = "android")]
-use log::LevelFilter;
-#[cfg(target_os = "android")]
-use raw_window_handle::{AndroidDisplayHandle, AndroidNdkWindowHandle};
-#[cfg(target_os = "android")]
-use ndk::native_window::NativeWindow;
 #[cfg(feature = "jni_support")]
 use jni::objects::JClass;
 #[cfg(feature = "jni_support")]
 use jni::sys::{jboolean, jfloat, jint, jlong};
 #[cfg(feature = "jni_support")]
 use jni::JNIEnv;
+#[cfg(target_os = "android")]
+use log::LevelFilter;
+#[cfg(target_os = "android")]
+use ndk::native_window::NativeWindow;
+#[cfg(target_os = "android")]
+use raw_window_handle::{AndroidDisplayHandle, AndroidNdkWindowHandle};
 #[cfg(feature = "wasm_support")]
 use wasm_bindgen::prelude::*;
-
 
 // Global state for game loop
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -1166,7 +1165,6 @@ pub extern "system" fn Java_app_kamkash_physicsfx_JvmWgpuGameLoop_nativeStartWin
     start_winit_app();
 }
 
-
 #[cfg(target_os = "android")]
 #[no_mangle]
 // #[::android_activity::android_main]
@@ -1174,7 +1172,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
     android_logger::init_once(
         Config::default()
             .with_max_level(LevelFilter::Trace)
-            .with_tag("physics_core"),
+            .with_tag("PhysicsFX"),
     );
 
     let mut quit = false;

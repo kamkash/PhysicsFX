@@ -204,8 +204,9 @@ adb shell am start -n app.kamkash.physicsfx/.MainActivity
 adb shell am stop-app app.kamkash.physicsfx
 
 
-adb logcat --pid=$(adb shell pidof app.kamkash.physicsfx) -v time > a.out
-
+adb logcat --pid=$(adb shell pidof app.kamkash.physicsfx) -v time 
+adb logcat -s PhysicsFX
+adb logcat -s PhysicsFX:D
 
 adb kill-server
 adb start-server
