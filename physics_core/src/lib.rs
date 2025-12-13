@@ -10,6 +10,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use wgpu::util::DeviceExt;
 
+// Bevy ECS imports
+use bevy_ecs::prelude::*;
+
+// Rapier3D imports
+use rapier3d::prelude::*;
+
 extern "C" {
     fn ANativeWindow_acquire(window: *mut c_void);
     fn ANativeWindow_getHeight(window: *mut c_void) -> i32;
@@ -41,6 +47,54 @@ use wasm_bindgen::prelude::*;
 
 // Global state for game loop
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+// --- ECS Components ---
+#[derive(Component, Clone, Copy)]
+struct Position2D {
+    x: f32,
+    y: f32,
+}
+
+#[derive(Component, Clone, Copy)]
+struct Velocity2D {
+    x: f32,
+    y: f32,
+}
+
+#[derive(Component, Clone, Copy)]
+struct Scale(f32);
+
+#[derive(Component, Clone, Copy)]
+struct Rotation(f32);
+
+#[derive(Component, Clone, Copy)]
+struct PhysicsBody {
+    rigid_body_handle: RigidBodyHandle,
+    collider_handle: ColliderHandle,
+}
+
+// --- Physics State ---
+struct PhysicsState {
+    world: World,
+    rigid_body_set: RigidBodySet,
+    collider_set: ColliderSet,
+    integration_parameters: IntegrationParameters,
+    physics_pipeline: PhysicsPipeline,
+    island_manager: IslandManager,
+    broad_phase: DefaultBroadPhase,
+    narrow_phase: NarrowPhase,
+    impulse_joint_set: ImpulseJointSet,
+    multibody_joint_set: MultibodyJointSet,
+    ccd_solver: CCDSolver,
+    gravity: Vector<Real>,
+}
+
+// Wrapper for thread safety
+struct PhysicsStateWrapper(Option<PhysicsState>);
+unsafe impl Send for PhysicsStateWrapper {}
+unsafe impl Sync for PhysicsStateWrapper {}
+
+static PHYSICS_STATE: Lazy<Mutex<PhysicsStateWrapper>> = Lazy::new(|| Mutex::new(PhysicsStateWrapper(None)));
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -452,7 +506,7 @@ fn init_wgpu_internal(
     let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Instance Buffer"),
         contents: bytemuck::cast_slice(&instances),
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
 
     // --- Compute Pipeline Setup ---
@@ -605,18 +659,110 @@ fn init_wgpu_internal(
 
     INITIALIZED.store(true, Ordering::Relaxed);
     
-    // Quick Integration Check (Verify compilation/linking)
-    {
-        use bevy_ecs::world::World;
-        use rapier3d::prelude::*;
-        log::info!("Verifying Physics/ECS integration...");
-        let mut world = World::new();
-        let _pipeline = PhysicsPipeline::new();
-        let entity = world.spawn_empty().id();
-        log::info!("Spawned entity: {:?}, Physics pipeline created.", entity);
-    }
+    // Initialize physics simulation
+    init_physics();
 
     true
+}
+
+/// Initialize physics simulation with ECS entities and Rapier rigid bodies
+fn init_physics() {
+    log::info!("Initializing physics simulation...");
+    
+    let mut world = World::new();
+    let mut rigid_body_set = RigidBodySet::new();
+    let mut collider_set = ColliderSet::new();
+    
+    // Grid configuration (must match instance creation)
+    const NUM_INSTANCES_PER_ROW: u32 = 10;
+    const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
+    
+    // Create dynamic rigid bodies for each instance
+    for y in 0..NUM_INSTANCES_PER_ROW {
+        for x in 0..NUM_INSTANCES_PER_ROW {
+            let pos_x = (x as f32 / NUM_INSTANCES_PER_ROW as f32) * 2.0 - 1.0 + (1.0 / NUM_INSTANCES_PER_ROW as f32);
+            let pos_y = (y as f32 / NUM_INSTANCES_PER_ROW as f32) * 2.0 - 1.0 + (1.0 / NUM_INSTANCES_PER_ROW as f32);
+            
+            // Create dynamic rigid body (using 3D with Z=0)
+            let rigid_body = RigidBodyBuilder::dynamic()
+                .translation(vector![pos_x, pos_y, 0.0])
+                .build();
+            let rb_handle = rigid_body_set.insert(rigid_body);
+            
+            // Create cuboid collider (small square for each instance)
+            let collider = ColliderBuilder::cuboid(0.05, 0.05, 0.05)
+                .restitution(0.7)
+                .build();
+            let coll_handle = collider_set.insert_with_parent(collider, rb_handle, &mut rigid_body_set);
+            
+            // Spawn ECS entity with components
+            world.spawn((
+                Position2D { x: pos_x, y: pos_y },
+                Velocity2D { x: 0.0, y: 0.0 },
+                Scale(0.05),
+                Rotation(0.0),
+                PhysicsBody {
+                    rigid_body_handle: rb_handle,
+                    collider_handle: coll_handle,
+                },
+            ));
+        }
+    }
+    
+    // Create static wall boundaries (viewport edges: -1 to 1)
+    // Bottom wall
+    let bottom_wall = RigidBodyBuilder::fixed()
+        .translation(vector![0.0, -1.1, 0.0])
+        .build();
+    let bottom_handle = rigid_body_set.insert(bottom_wall);
+    let bottom_collider = ColliderBuilder::cuboid(2.0, 0.1, 0.1).build();
+    collider_set.insert_with_parent(bottom_collider, bottom_handle, &mut rigid_body_set);
+    
+    // Top wall
+    let top_wall = RigidBodyBuilder::fixed()
+        .translation(vector![0.0, 1.1, 0.0])
+        .build();
+    let top_handle = rigid_body_set.insert(top_wall);
+    let top_collider = ColliderBuilder::cuboid(2.0, 0.1, 0.1).build();
+    collider_set.insert_with_parent(top_collider, top_handle, &mut rigid_body_set);
+    
+    // Left wall
+    let left_wall = RigidBodyBuilder::fixed()
+        .translation(vector![-1.1, 0.0, 0.0])
+        .build();
+    let left_handle = rigid_body_set.insert(left_wall);
+    let left_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
+    collider_set.insert_with_parent(left_collider, left_handle, &mut rigid_body_set);
+    
+    // Right wall
+    let right_wall = RigidBodyBuilder::fixed()
+        .translation(vector![1.1, 0.0, 0.0])
+        .build();
+    let right_handle = rigid_body_set.insert(right_wall);
+    let right_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
+    collider_set.insert_with_parent(right_collider, right_handle, &mut rigid_body_set);
+    
+    // Create physics state
+    let physics_state = PhysicsState {
+        world,
+        rigid_body_set,
+        collider_set,
+        integration_parameters: IntegrationParameters::default(),
+        physics_pipeline: PhysicsPipeline::new(),
+        island_manager: IslandManager::new(),
+        broad_phase: DefaultBroadPhase::new(),
+        narrow_phase: NarrowPhase::new(),
+        impulse_joint_set: ImpulseJointSet::new(),
+        multibody_joint_set: MultibodyJointSet::new(),
+        ccd_solver: CCDSolver::new(),
+        gravity: vector![0.0, -9.81, 0.0], // Gravity pointing down in Y
+    };
+    
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        guard.0 = Some(physics_state);
+    }
+    
+    log::info!("Physics initialized with {} dynamic bodies and 4 static walls", NUM_INSTANCES);
 }
 
 fn resize_internal(width: u32, height: u32) {
@@ -637,10 +783,86 @@ fn resize_internal(width: u32, height: u32) {
 }
 
 fn update_internal(_dt: f32) {
+    // Step physics simulation
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            // Step the physics simulation
+            physics.physics_pipeline.step(
+                &physics.gravity,
+                &physics.integration_parameters,
+                &mut physics.island_manager,
+                &mut physics.broad_phase,
+                &mut physics.narrow_phase,
+                &mut physics.rigid_body_set,
+                &mut physics.collider_set,
+                &mut physics.impulse_joint_set,
+                &mut physics.multibody_joint_set,
+                &mut physics.ccd_solver,
+                None, // query_pipeline
+                &(), // physics_hooks
+                &(), // event_handler
+            );
+            
+            // Update ECS component positions from Rapier rigid bodies
+            for (entity, physics_body) in physics.world.query::<(Entity, &PhysicsBody)>().iter(&physics.world) {
+                if let Some(rb) = physics.rigid_body_set.get(physics_body.rigid_body_handle) {
+                    let translation = rb.translation();
+                    let new_pos = Position2D { x: translation.x, y: translation.y };
+                    let new_vel = Velocity2D { x: rb.linvel().x, y: rb.linvel().y };
+                    
+                    // Update entity components (need mutable world access)
+                    // We'll handle this in sync_physics_to_gpu instead
+                    let _ = (entity, new_pos, new_vel); // Suppress warnings for now
+                }
+            }
+        } else {
+            log::warn!("update_internal: PHYSICS_STATE is None");
+        }
+    } else {
+        log::error!("update_internal: Failed to lock PHYSICS_STATE");
+    }
+}
+
+/// Sync physics positions to the GPU instance buffer
+fn sync_physics_to_gpu() {
+    // Collect updated instance data from physics
+    let instances: Vec<Instance> = {
+        let mut guard = match PHYSICS_STATE.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        
+        let physics = match guard.0.as_mut() {
+            Some(p) => p,
+            None => return,
+        };
+        
+        let mut instances = Vec::new();
+        for (_entity, physics_body) in physics.world.query::<(Entity, &PhysicsBody)>().iter(&physics.world) {
+            if let Some(rb) = physics.rigid_body_set.get(physics_body.rigid_body_handle) {
+                let translation = rb.translation();
+                let rotation = rb.rotation().angle(); // Get rotation angle around Z axis
+                
+                instances.push(Instance {
+                    position: [translation.x, translation.y],
+                    velocity: [rb.linvel().x, rb.linvel().y],
+                    scale: 0.05, // Fixed scale for now
+                    rotation,
+                    uv: [0.0, 0.0],
+                });
+            }
+        }
+        instances
+    };
+    
+    // Write to GPU buffer
     if let Ok(guard) = WGPU_STATE.lock() {
         if let Some(state) = &guard.0 {
-            // TODO: Update UI or simulation state
-            // log::trace!("update_internal: dt={}", dt); 
+            state.queue.write_buffer(
+                &state.instance_buffer,
+                0,
+                bytemuck::cast_slice(&instances),
+            );
         }
     }
 }
@@ -674,6 +896,11 @@ fn render_internal() {
         }
     }
 
+    // Sync physics to GPU FIRST (before acquiring swapchain texture)
+    // This avoids acquiring a texture and then dropping it without presenting.
+    sync_physics_to_gpu();
+    
+    // Now acquire texture and render in a single lock session
     if let Ok(mut guard) = WGPU_STATE.lock() {
         if let Some(state) = guard.0.as_mut() {
             let output = match state.surface.get_current_texture() {
@@ -686,32 +913,36 @@ fn render_internal() {
                             guard.0 = None;
                             INITIALIZED.store(false, Ordering::Relaxed);
                         }
+                        wgpu::SurfaceError::Timeout => {
+                            // On timeout, try to reconfigure the surface
+                            log::warn!("Surface timeout, reconfiguring surface");
+                            state.surface.configure(&state.device, &state.config);
+                        }
                         _ => {}
                     }
                     return;
                 }
             };
-
             let view = output
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-            // --- Compute Encoder ---
-            {
-                let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Compute Encoder"),
-                });
-                {
-                    let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                        label: Some("Compute Pass"),
-                        timestamp_writes: None,
-                    });
-                    compute_pass.set_pipeline(&state.compute_pipeline);
-                    compute_pass.set_bind_group(0, &state.compute_bind_group, &[]);
-                    compute_pass.dispatch_workgroups(2, 1, 1);
-                }
-                state.queue.submit(std::iter::once(encoder.finish()));
-            }
+            // --- Compute Encoder (disabled - physics now drives updates) ---
+            // {
+            //     let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            //         label: Some("Compute Encoder"),
+            //     });
+            //     {
+            //         let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            //             label: Some("Compute Pass"),
+            //             timestamp_writes: None,
+            //         });
+            //         compute_pass.set_pipeline(&state.compute_pipeline);
+            //         compute_pass.set_bind_group(0, &state.compute_bind_group, &[]);
+            //         compute_pass.dispatch_workgroups(2, 1, 1);
+            //     }
+            //     state.queue.submit(std::iter::once(encoder.finish()));
+            // }
 
             // --- Render Encoder ---
             {
@@ -753,7 +984,16 @@ fn render_internal() {
                 state.queue.submit(std::iter::once(encoder.finish()));
             }
 
-            output.present();
+            // Present with panic recovery to handle Vulkan driver issues
+            let present_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                output.present();
+            }));
+            
+            if present_result.is_err() {
+                log::error!("Present panicked! Reconfiguring surface...");
+                state.surface.configure(&state.device, &state.config);
+                return;
+            }
 
             // FPS Logging
             state.frame_count += 1;
@@ -1368,7 +1608,7 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
     let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Instance Buffer"),
         contents: bytemuck::cast_slice(&instances),
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
 
     // --- Compute Pipeline Setup ---
@@ -1445,6 +1685,9 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         Ok(_) => log::info!("WASM wgpu initialized successfully"),
         Err(_) => log::warn!("WASM wgpu already initialized"),
     }
+
+    // Initialize physics simulation
+    init_physics();
 
     true
 }
@@ -1686,16 +1929,21 @@ pub extern "C" fn android_main(app: AndroidApp) {
                         let display_handle = AndroidDisplayHandle::new();
 
                         // Call your internal init (make sure signature matches)
-                        if !init_wgpu_internal(
+                        log::info!("Calling init_wgpu_internal...");
+                        let init_result = init_wgpu_internal(
                             RawWindowHandle::AndroidNdk(window_handle),
                             RawDisplayHandle::Android(display_handle),
                             width as u32,
                             height as u32,
                             window_ptr as *mut c_void,
-                        ) {
+                        );
+                        log::info!("init_wgpu_internal returned: {}", init_result);
+                        log::info!("INITIALIZED flag is now: {}", INITIALIZED.load(Ordering::Relaxed));
+                        if !init_result {
                             log::error!("Failed to initialize wgpu");
                             // quit = true; // Don't quit, try to recover or wait for next window
                         }
+                        // Note: init_physics() is called inside init_wgpu_internal
                     }
                 }
 
@@ -1756,7 +2004,8 @@ pub extern "C" fn android_main(app: AndroidApp) {
             },
         );
 
-        if !suspended {
+        let init_flag = INITIALIZED.load(Ordering::Relaxed);
+        if !suspended && init_flag {
             let now = std::time::Instant::now();
             let dt = now.duration_since(last_frame_time).as_secs_f32();
             last_frame_time = now;
@@ -1766,6 +2015,13 @@ pub extern "C" fn android_main(app: AndroidApp) {
             // redraw_requested = false; // logic removed
             // Sleep to prevent hot loop
             std::thread::sleep(std::time::Duration::from_millis(10));
+        } else if !init_flag {
+            // Log occasionally to not spam
+            static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !LOGGED.load(Ordering::Relaxed) {
+                log::info!("Game loop waiting: suspended={}, INITIALIZED={}", suspended, init_flag);
+                LOGGED.store(true, Ordering::Relaxed);
+            }
         }
     }
 }
