@@ -442,6 +442,18 @@ fn init_wgpu_internal(
     }
 
     INITIALIZED.store(true, Ordering::Relaxed);
+    
+    // Quick Integration Check (Verify compilation/linking)
+    {
+        use bevy_ecs::world::World;
+        use rapier3d::prelude::*;
+        log::info!("Verifying Physics/ECS integration...");
+        let mut world = World::new();
+        let _pipeline = PhysicsPipeline::new();
+        let entity = world.spawn_empty().id();
+        log::info!("Spawned entity: {:?}, Physics pipeline created.", entity);
+    }
+
     true
 }
 
@@ -623,13 +635,47 @@ pub extern "C" fn physics_core_free_string(s: *mut c_char) {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+fn init_logging() {
+    use std::sync::Once;
+    static START: Once = Once::new();
+    START.call_once(|| {
+        // Configure flexi_logger:
+        // - Output to stderr (for console)
+        // - Output to a rotating file in "logs/" directory
+        // - Default level override via RUST_LOG supported
+        use flexi_logger::{Logger, FileSpec, Criterion, Naming, Cleanup, Duplicate};
+        
+        // Print CWD to locate logs
+        if let Ok(cwd) = std::env::current_dir() {
+            println!("Rust Native Library Running in: {:?}", cwd);
+        }
+
+        let _ = Logger::try_with_env_or_str("debug")
+            .expect("Failed to create logger")
+            .log_to_file(FileSpec::default().directory("logs").basename("physics_core"))
+            .duplicate_to_stderr(Duplicate::All) // Print to console too
+            .rotate(
+                Criterion::Size(1024 * 1024), // 1MB
+                Naming::Timestamps,
+                Cleanup::KeepLogFiles(7), 
+            )
+            .start();
+    });
+}
+
 #[no_mangle]
 pub extern "C" fn wgpu_init(
     surface_handle: *mut std::ffi::c_void,
     width: i32,
     height: i32,
 ) -> bool {
-    log::info!(
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+    {
+        init_logging();
+    }
+
+    log::debug!(
         "wgpu_init called: {:?}, {}x{}",
         surface_handle,
         width,
@@ -1214,6 +1260,11 @@ pub fn start_winit_app() {
             .build(&event_loop)
             .unwrap(),
     );
+
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+    {
+        init_logging();
+    }
 
     let width = window.inner_size().width;
 
