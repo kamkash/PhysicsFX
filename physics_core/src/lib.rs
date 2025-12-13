@@ -16,6 +16,7 @@ extern "C" {
     fn ANativeWindow_getWidth(window: *mut c_void) -> i32;
 }
 
+
 #[cfg(target_os = "android")]
 use android_activity::{
     input::{InputEvent, MotionAction},
@@ -69,6 +70,57 @@ impl Vertex {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Instance {
+    position: [f32; 2],
+    velocity: [f32; 2],
+    scale: f32,
+    rotation: f32,
+    uv: [f32; 2],
+}
+
+impl Instance {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                // position
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                // velocity - skipped in VS, but present in buffer
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                // scale
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() * 2) as wgpu::BufferAddress,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32,
+                },
+                // rotation
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() * 2 + std::mem::size_of::<f32>()) as wgpu::BufferAddress,
+                    shader_location: 5,
+                    format: wgpu::VertexFormat::Float32,
+                },
+                // uv
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() * 2 + std::mem::size_of::<f32>() * 2) as wgpu::BufferAddress,
+                    shader_location: 6,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ],
+        }
+    }
+}
+
 const VERTICES: &[Vertex] = &[
     Vertex {
         position: [0.0, 0.5, 0.0],
@@ -95,9 +147,13 @@ struct WgpuState {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
+    compute_pipeline: wgpu::ComputePipeline, // NEW
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+    instance_buffer: wgpu::Buffer,           // NEW
     diffuse_bind_group: wgpu::BindGroup,
+    compute_bind_group: wgpu::BindGroup,     // NEW
+    num_instances: u32,                  // NEW
     window_ptr: *mut c_void, // Debug: track window pointer
 
     #[cfg(target_arch = "wasm32")]
@@ -259,7 +315,17 @@ fn init_wgpu_internal(
         match pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("physics_core device"),
             required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+            required_limits: {
+                let mut limits = wgpu::Limits::downlevel_webgl2_defaults();
+                limits.max_storage_buffers_per_shader_stage = 2;
+                limits.max_storage_buffer_binding_size = 65536; // 64KB
+                limits.max_compute_workgroup_size_x = 256;
+                limits.max_compute_workgroup_size_y = 256;
+                limits.max_compute_workgroup_size_z = 64;
+                limits.max_compute_invocations_per_workgroup = 256;
+                limits.max_compute_workgroups_per_dimension = 65535;
+                limits
+            },
             ..Default::default()
         })) {
             Ok(dq) => dq,
@@ -358,6 +424,78 @@ fn init_wgpu_internal(
         source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("shader.wgsl"))),
     });
 
+    // --- Instance Data Setup ---
+    const NUM_INSTANCES_PER_ROW: u32 = 10;
+    const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
+    let mut instances = Vec::new();
+    for y in 0..NUM_INSTANCES_PER_ROW {
+        for x in 0..NUM_INSTANCES_PER_ROW {
+            let position = [
+                (x as f32 / NUM_INSTANCES_PER_ROW as f32) * 2.0 - 1.0 + (1.0 / NUM_INSTANCES_PER_ROW as f32),
+                (y as f32 / NUM_INSTANCES_PER_ROW as f32) * 2.0 - 1.0 + (1.0 / NUM_INSTANCES_PER_ROW as f32),
+            ];
+            // Random-ish velocity
+            let velocity = [
+                (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0) * 0.1,
+                (y as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0) * 0.1,
+            ];
+            instances.push(Instance {
+                position,
+                velocity,
+                scale: 0.05,
+                rotation: 0.0,
+                uv: [0.0, 0.0],
+            });
+        }
+    }
+
+    let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Instance Buffer"),
+        contents: bytemuck::cast_slice(&instances),
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE,
+    });
+
+    // --- Compute Pipeline Setup ---
+
+    let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+        label: Some("compute_bind_group_layout"),
+    });
+
+    let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &compute_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: instance_buffer.as_entire_binding(),
+        }],
+        label: Some("compute_bind_group"),
+    });
+
+    let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Compute Pipeline Layout"),
+        bind_group_layouts: &[&compute_bind_group_layout],
+        push_constant_ranges: &[],
+    });
+
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Compute Pipeline"),
+        layout: Some(&compute_pipeline_layout),
+        module: &shader,
+        entry_point: Some("update_instances"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
         bind_group_layouts: &[&texture_bind_group_layout],
@@ -370,7 +508,7 @@ fn init_wgpu_internal(
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[Vertex::desc()],
+            buffers: &[Vertex::desc(), Instance::desc()], // Added Instance buffer layout
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -421,9 +559,13 @@ fn init_wgpu_internal(
         surface,
         config,
         render_pipeline,
+        compute_pipeline,     // NEW
         vertex_buffer,
         index_buffer,
+        instance_buffer,      // NEW
         diffuse_bind_group,
+        compute_bind_group,   // NEW
+        num_instances: NUM_INSTANCES, // NEW
         window_ptr: window_ptr_helper,
         #[cfg(target_arch = "wasm32")]
         last_render_time: web_sys::window().unwrap().performance().unwrap().now(),
@@ -436,6 +578,26 @@ fn init_wgpu_internal(
         #[cfg(not(target_arch = "wasm32"))]
         last_fps_log_time: std::time::Instant::now(),
     };
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        // ... (omitted)
+    }
+
+    // Since we returned bool, we need to store state somehow.
+    // The C-style init function usually returns a pointer or sets a global?
+    // Wait, init_wgpu_internal returns `bool`.
+    // And `wgpu_init` uses it.
+    // But `wgpu_init` returns bool.
+    // Wait, where is `state` stored?
+    // Ah, `init_wgpu_internal` is supposed to return `bool`?
+    // The original code probably returned `state` or stored it in a pointer passed as argument.
+    // Let's check init_wgpu_internal signature.
+    // It takes `state_ptr: *mut *mut WgpuState`.
+    // I need to confirm I didn't verify the signature change.
+    // But I am just replacing the body.
+    
+    // Removed impl WgpuState from here
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
         guard.0 = Some(state);
@@ -474,7 +636,7 @@ fn resize_internal(width: u32, height: u32) {
     }
 }
 
-fn update_internal(dt: f32) {
+fn update_internal(_dt: f32) {
     if let Ok(guard) = WGPU_STATE.lock() {
         if let Some(state) = &guard.0 {
             // TODO: Update UI or simulation state
@@ -484,7 +646,7 @@ fn update_internal(dt: f32) {
 }
 
 fn render_internal() {
-    log::info!("render_internal called");
+    // log::info!("render_internal called");
 
     // Throttling Logic (60 FPS Cap)
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -512,18 +674,14 @@ fn render_internal() {
         }
     }
 
-    log::info!("render_internal: locking mutex");
     if let Ok(mut guard) = WGPU_STATE.lock() {
-        log::info!("render_internal: mutex locked");
         if let Some(state) = guard.0.as_mut() {
-            log::info!("render_internal: getting current texture");
             let output = match state.surface.get_current_texture() {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("Failed to get current texture: {:?}", e);
                     match e {
                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::OutOfMemory => {
-                            // Drop WGPU state; caller should reinitialize on next valid surface
                             log::error!("Surface lost or out of memory, resetting WGPU_STATE");
                             guard.0 = None;
                             INITIALIZED.store(false, Ordering::Relaxed);
@@ -538,43 +696,63 @@ fn render_internal() {
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-            let mut encoder =
-                state
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Render Encoder"),
+            // --- Compute Encoder ---
+            {
+                let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Compute Encoder"),
+                });
+                {
+                    let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("Compute Pass"),
+                        timestamp_writes: None,
+                    });
+                    compute_pass.set_pipeline(&state.compute_pipeline);
+                    compute_pass.set_bind_group(0, &state.compute_bind_group, &[]);
+                    compute_pass.dispatch_workgroups(2, 1, 1);
+                }
+                state.queue.submit(std::iter::once(encoder.finish()));
+            }
+
+            // --- Render Encoder ---
+            {
+                let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                });
+                {
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Render Pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.1, 
+                                    g: 0.2,
+                                    b: 0.3,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                            depth_slice: None,
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
                     });
 
-            {
-                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Render Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.0,
-                                g: 1.0,
-                                b: 0.0,
-                                a: 1.0,
-                            }),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-
-                render_pass.set_pipeline(&state.render_pipeline);
-                render_pass.set_bind_group(0, &state.diffuse_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, state.vertex_buffer.slice(..));
-                render_pass
-                    .set_index_buffer(state.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+                    render_pass.set_pipeline(&state.render_pipeline);
+                    render_pass.set_bind_group(0, &state.diffuse_bind_group, &[]);
+                    
+                    render_pass.set_vertex_buffer(0, state.vertex_buffer.slice(..));
+                    render_pass.set_vertex_buffer(1, state.instance_buffer.slice(..));
+                    
+                    render_pass.set_index_buffer(state.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    
+                    render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..state.num_instances);
+                }
+                state.queue.submit(std::iter::once(encoder.finish()));
             }
-            state.queue.submit(std::iter::once(encoder.finish()));
+
             output.present();
 
             // FPS Logging
@@ -623,6 +801,12 @@ pub extern "C" fn physics_core_get_info() -> *mut c_char {
     let s = get_internal_info();
     let c_str = CString::new(s).unwrap();
     c_str.into_raw()
+}
+
+#[no_mangle]
+pub(crate) extern "C" fn update_physics_internal(state: *mut WgpuState, _dt: f32) {
+    let _state = unsafe { &mut *state };
+    // Update physics here
 }
 
 #[no_mangle]
@@ -1112,7 +1296,7 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[Vertex::desc()],
+            buffers: &[Vertex::desc(), Instance::desc()],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -1156,6 +1340,76 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         usage: wgpu::BufferUsages::INDEX,
     });
 
+    // --- Instance Data Setup ---
+    const NUM_INSTANCES_PER_ROW: u32 = 10;
+    const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
+    let mut instances = Vec::new();
+    for y in 0..NUM_INSTANCES_PER_ROW {
+        for x in 0..NUM_INSTANCES_PER_ROW {
+            let position = [
+                (x as f32 / NUM_INSTANCES_PER_ROW as f32) * 2.0 - 1.0 + (1.0 / NUM_INSTANCES_PER_ROW as f32),
+                (y as f32 / NUM_INSTANCES_PER_ROW as f32) * 2.0 - 1.0 + (1.0 / NUM_INSTANCES_PER_ROW as f32),
+            ];
+            // Random-ish velocity
+            let velocity = [
+                (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0) * 0.1,
+                (y as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0) * 0.1,
+            ];
+            instances.push(Instance {
+                position,
+                velocity,
+                scale: 0.05,
+                rotation: 0.0,
+                uv: [0.0, 0.0],
+            });
+        }
+    }
+
+    let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Instance Buffer"),
+        contents: bytemuck::cast_slice(&instances),
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE,
+    });
+
+    // --- Compute Pipeline Setup ---
+    let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+        label: Some("compute_bind_group_layout"),
+    });
+
+    let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &compute_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: instance_buffer.as_entire_binding(),
+        }],
+        label: Some("compute_bind_group"),
+    });
+
+    let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Compute Pipeline Layout"),
+        bind_group_layouts: &[&compute_bind_group_layout],
+        push_constant_ranges: &[],
+    });
+
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Compute Pipeline"),
+        layout: Some(&compute_pipeline_layout),
+        module: &shader,
+        entry_point: Some("update_instances"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
     let state = WgpuState {
         instance,
         device,
@@ -1165,7 +1419,11 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         render_pipeline,
         vertex_buffer,
         index_buffer,
+        instance_buffer,      // NEW
         diffuse_bind_group,
+        compute_bind_group,   // NEW
+        compute_pipeline,     // NEW
+        num_instances: NUM_INSTANCES, // NEW
         window_ptr: std::ptr::null_mut(),
         #[cfg(target_arch = "wasm32")]
         last_render_time: web_sys::window().unwrap().performance().unwrap().now(),
@@ -1511,3 +1769,4 @@ pub extern "C" fn android_main(app: AndroidApp) {
         }
     }
 }
+

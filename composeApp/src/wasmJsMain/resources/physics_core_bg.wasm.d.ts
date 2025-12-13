@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const physics_core_get_info: () => number;
+export const update_physics_internal: (a: number, b: number) => void;
 export const physics_core_free_string: (a: number) => void;
 export const wgpu_init: (a: number, b: number, c: number) => number;
 export const wgpu_update: (a: number) => void;

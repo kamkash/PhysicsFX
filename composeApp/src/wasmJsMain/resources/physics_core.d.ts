@@ -18,6 +18,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly physics_core_get_info: () => number;
+  readonly update_physics_internal: (a: number, b: number) => void;
   readonly physics_core_free_string: (a: number) => void;
   readonly wgpu_init: (a: number, b: number, c: number) => number;
   readonly wgpu_update: (a: number) => void;
