@@ -755,7 +755,7 @@ fn init_physics() {
         impulse_joint_set: ImpulseJointSet::new(),
         multibody_joint_set: MultibodyJointSet::new(),
         ccd_solver: CCDSolver::new(),
-        gravity: vector![0.0, -9.81, 0.0], // Gravity pointing down in Y
+        gravity: vector![0.0, -1.81, 0.0], // Gravity pointing down in Y
     };
     
     if let Ok(mut guard) = PHYSICS_STATE.lock() {
@@ -870,6 +870,8 @@ fn sync_physics_to_gpu() {
 fn render_internal() {
     // log::info!("render_internal called");
 
+    static FPS_CAP_MS: f64 = 12.0f64; // Approx 60 FPS.  16.6ms = 1000/60. Allow slight tolerance?
+
     // Throttling Logic (60 FPS Cap)
     if let Ok(mut guard) = WGPU_STATE.lock() {
         if let Some(state) = guard.0.as_mut() {
@@ -877,8 +879,8 @@ fn render_internal() {
              {
                  let now = web_sys::window().unwrap().performance().unwrap().now();
                  let elapsed = now - state.last_render_time;
-                 // 16.6ms = 1000/60. Allow slight tolerance?
-                 if elapsed < 16.0 {
+                 
+                 if elapsed < FPS_CAP_MS {
                      return;
                  }
                  state.last_render_time = now;
@@ -888,7 +890,7 @@ fn render_internal() {
              {
                  let now = std::time::Instant::now();
                  let elapsed = now.duration_since(state.last_render_time);
-                 if elapsed.as_millis() < 16 {
+                 if elapsed.as_millis() < FPS_CAP_MS as u128 {
                      return;
                  }
                  state.last_render_time = now;
