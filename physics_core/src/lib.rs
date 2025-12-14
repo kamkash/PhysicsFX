@@ -638,30 +638,12 @@ fn init_wgpu_internal(
         // ... (omitted)
     }
 
-    // Since we returned bool, we need to store state somehow.
-    // The C-style init function usually returns a pointer or sets a global?
-    // Wait, init_wgpu_internal returns `bool`.
-    // And `wgpu_init` uses it.
-    // But `wgpu_init` returns bool.
-    // Wait, where is `state` stored?
-    // Ah, `init_wgpu_internal` is supposed to return `bool`?
-    // The original code probably returned `state` or stored it in a pointer passed as argument.
-    // Let's check init_wgpu_internal signature.
-    // It takes `state_ptr: *mut *mut WgpuState`.
-    // I need to confirm I didn't verify the signature change.
-    // But I am just replacing the body.
-    
-    // Removed impl WgpuState from here
-
     if let Ok(mut guard) = WGPU_STATE.lock() {
         guard.0 = Some(state);
     }
-
     INITIALIZED.store(true, Ordering::Relaxed);
-    
     // Initialize physics simulation
     init_physics();
-
     true
 }
 
