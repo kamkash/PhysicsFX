@@ -1751,18 +1751,24 @@ pub fn start_winit_app() {
         event::{Event, WindowEvent},
         event_loop::EventLoop,
         window::WindowBuilder,
+        window::WindowLevel,
     };
 
     let event_loop = EventLoop::new().unwrap();
     let mut last_frame_time = std::time::Instant::now();
-
-    let window = std::sync::Arc::new(
-        WindowBuilder::new()
+    let window = WindowBuilder::new()
             .with_title("PhysicsFX (Rust Winit)")
             .with_inner_size(winit::dpi::PhysicalSize::new(1600, 900))
             .build(&event_loop)
-            .unwrap(),
+            .unwrap();
+    #[cfg(target_os = "windows")]
+    window.set_window_level(WindowLevel::AlwaysOnTop);
+    #[cfg(target_os = "windows")]
+    window.set_window_level(WindowLevel::Normal);
+    let window = std::sync::Arc::new(
+        window
     );
+
 
     #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     {

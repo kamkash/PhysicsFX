@@ -138,12 +138,16 @@ compose.desktop {
             "-Djava.library.path=${project.projectDir}/src/jvmMain/resources",
             "--add-exports", "java.desktop/sun.awt=ALL-UNNAMED",
             "--add-exports", "java.desktop/sun.lwawt=ALL-UNNAMED",
-            "--add-exports", "java.desktop/sun.lwawt.macosx=ALL-UNNAMED", 
             "--add-opens", "java.desktop/sun.awt=ALL-UNNAMED",
-            "--add-opens", "java.desktop/java.awt=ALL-UNNAMED",
-            "-XstartOnFirstThread",
-            "-Dsun.java2d.metal=true"
+            "--add-opens", "java.desktop/java.awt=ALL-UNNAMED"
         )
+        if (System.getProperty("os.name").lowercase().contains("mac")) {
+            jvmArgs += listOf(
+                "--add-exports", "java.desktop/sun.lwawt.macosx=ALL-UNNAMED", 
+                "-XstartOnFirstThread",
+                "-Dsun.java2d.metal=true"
+            )
+        }
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
@@ -155,22 +159,37 @@ compose.desktop {
 
 tasks.register("buildRustDesktop") {
     doLast {
+        println(">>> Building Rust library for Desktop...")
         val rustDir = rootProject.projectDir.resolve("physics_core")
         val targetDir = rustDir.resolve("target/release")
         val resourcesDir = projectDir.resolve("src/jvmMain/resources")
         
+        println(">>> Running cargo build in: $rustDir")
         exec {
             workingDir = rustDir
             commandLine("cargo", "build", "--release", "--features", "jni_support")
         }
+
         val osName = System.getProperty("os.name").lowercase()
-        val libName = if (osName.contains("mac")) "libphysics_core.dylib" 
-                      else if (osName.contains("win")) "physics_core.dll" 
-                      else "libphysics_core.so"
+        val libName = when {
+            osName.contains("mac") -> "libphysics_core.dylib" 
+            osName.contains("win") -> "physics_core.dll" 
+            else -> "libphysics_core.so"
+        }
+        
+        val sourceFile = targetDir.resolve(libName)
+        println(">>> Looking for compiled library at: $sourceFile")
+
+        if (!sourceFile.exists()) {
+            throw GradleException("Native library not found at $sourceFile. The Rust build might have failed.")
+        }
+        
+        println(">>> Copying '$libName' to '$resourcesDir'")
         copy {
-            from(targetDir.resolve(libName))
+            from(sourceFile)
             into(resourcesDir)
         }
+        println(">>> Finished copying Rust library for Desktop.")
     }
 }
 
