@@ -5,6 +5,7 @@ use raw_window_handle::{
 use std::ffi::c_void; // Needed for casting
 use std::ffi::CString;
 use std::os::raw::c_char;
+#[allow(unused_imports)]
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -16,6 +17,7 @@ use bevy_ecs::prelude::*;
 // Rapier3D imports
 use rapier3d::prelude::*;
 
+#[allow(dead_code)]
 extern "C" {
     fn ANativeWindow_acquire(window: *mut c_void);
     fn ANativeWindow_getHeight(window: *mut c_void) -> i32;
@@ -175,21 +177,22 @@ impl Instance {
     }
 }
 
+static HALF_SIZE: f32 = 1.0;
 const VERTICES: &[Vertex] = &[
         Vertex {
-            position: [-1.0, -1.0, 0.0],
+            position: [0.0, 0.0, 0.0],
             tex_coords: [0.0, 0.0],
         },
         Vertex {
-            position: [1.0, -1.0, 0.0],
+            position: [HALF_SIZE, 0.0, 0.0],
             tex_coords: [1.0, 0.0],
         },
         Vertex {
-            position: [1.0, 1.0, 0.0],
+            position: [HALF_SIZE, HALF_SIZE, 0.0],
             tex_coords: [1.0, 1.0],
         },
         Vertex {
-            position: [-1.0, 1.0, 0.0],
+            position: [0.0, HALF_SIZE, 0.0],
             tex_coords: [0.0, 1.0],
         },
 ];
@@ -946,9 +949,9 @@ fn render_internal() {
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.1, 
-                                    g: 0.2,
-                                    b: 0.3,
+                                    r: 1.0, 
+                                    g: 1.0,
+                                    b: 1.0,
                                     a: 1.0,
                                 }),
                                 store: wgpu::StoreOp::Store,
@@ -1136,7 +1139,7 @@ pub extern "C" fn wgpu_init(
         #[cfg(target_os = "windows")]
         let (window_handle, display_handle) = {
             use raw_window_handle::{Win32WindowHandle, WindowsDisplayHandle};
-            let mut handle = Win32WindowHandle::new(
+            let handle = Win32WindowHandle::new(
                 std::num::NonZeroIsize::new(surface_handle as isize).unwrap(),
             );
             (
@@ -1741,11 +1744,14 @@ pub fn start_winit_app() {
         window::WindowLevel,
     };
 
+    static WIDTH: u32 = 800;
+    static HEIGHT: u32 = 600;
+
     let event_loop = EventLoop::new().unwrap();
     let mut last_frame_time = std::time::Instant::now();
     let window = WindowBuilder::new()
             .with_title("PhysicsFX (Rust Winit)")
-            .with_inner_size(winit::dpi::PhysicalSize::new(1600, 900))
+            .with_inner_size(winit::dpi::PhysicalSize::new(WIDTH, HEIGHT))
             .build(&event_loop)
             .unwrap();
     #[cfg(target_os = "windows")]
