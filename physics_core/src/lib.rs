@@ -176,21 +176,25 @@ impl Instance {
 }
 
 const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0.0, 0.5, 0.0],
-        tex_coords: [0.5, 0.0],
-    },
-    Vertex {
-        position: [-0.5, -0.5, 0.0],
-        tex_coords: [0.0, 1.0],
-    },
-    Vertex {
-        position: [0.5, -0.5, 0.0],
-        tex_coords: [1.0, 1.0],
-    },
+        Vertex {
+            position: [-1.0, -1.0, 0.0],
+            tex_coords: [0.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, -1.0, 0.0],
+            tex_coords: [1.0, 0.0],
+        },
+        Vertex {
+            position: [1.0, 1.0, 0.0],
+            tex_coords: [1.0, 1.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0, 0.0],
+            tex_coords: [0.0, 1.0],
+        },
 ];
 
-const INDICES: &[u16] = &[0, 1, 2];
+const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 /// Holds the wgpu state for rendering
 struct WgpuState {
@@ -668,6 +672,7 @@ fn init_physics() {
             // Create dynamic rigid body (using 3D with Z=0)
             let rigid_body = RigidBodyBuilder::dynamic()
                 .translation(vector![pos_x, pos_y, 0.0])
+                .ccd_enabled(true)
                 .build();
             let rb_handle = rigid_body_set.insert(rigid_body);
             
@@ -697,32 +702,32 @@ fn init_physics() {
         .translation(vector![0.0, -1.1, 0.0])
         .build();
     let bottom_handle = rigid_body_set.insert(bottom_wall);
-    let bottom_collider = ColliderBuilder::cuboid(2.0, 0.1, 0.1).build();
+    let bottom_collider = ColliderBuilder::cuboid(4.0, 0.01, 0.1).build();
     collider_set.insert_with_parent(bottom_collider, bottom_handle, &mut rigid_body_set);
     
     // Top wall
-    let top_wall = RigidBodyBuilder::fixed()
-        .translation(vector![0.0, 1.1, 0.0])
-        .build();
-    let top_handle = rigid_body_set.insert(top_wall);
-    let top_collider = ColliderBuilder::cuboid(2.0, 0.1, 0.1).build();
-    collider_set.insert_with_parent(top_collider, top_handle, &mut rigid_body_set);
+    // let top_wall = RigidBodyBuilder::fixed()
+    //     .translation(vector![0.0, 1.1, 0.0])
+    //     .build();
+    // let top_handle = rigid_body_set.insert(top_wall);
+    // let top_collider = ColliderBuilder::cuboid(2.0, 0.1, 0.1).build();
+    // collider_set.insert_with_parent(top_collider, top_handle, &mut rigid_body_set);
     
-    // Left wall
-    let left_wall = RigidBodyBuilder::fixed()
-        .translation(vector![-1.1, 0.0, 0.0])
-        .build();
-    let left_handle = rigid_body_set.insert(left_wall);
-    let left_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
-    collider_set.insert_with_parent(left_collider, left_handle, &mut rigid_body_set);
+    // // Left wall
+    // let left_wall = RigidBodyBuilder::fixed()
+    //     .translation(vector![-1.1, 0.0, 0.0])
+    //     .build();
+    // let left_handle = rigid_body_set.insert(left_wall);
+    // let left_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
+    // collider_set.insert_with_parent(left_collider, left_handle, &mut rigid_body_set);
     
-    // Right wall
-    let right_wall = RigidBodyBuilder::fixed()
-        .translation(vector![1.1, 0.0, 0.0])
-        .build();
-    let right_handle = rigid_body_set.insert(right_wall);
-    let right_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
-    collider_set.insert_with_parent(right_collider, right_handle, &mut rigid_body_set);
+    // // Right wall
+    // let right_wall = RigidBodyBuilder::fixed()
+    //     .translation(vector![1.1, 0.0, 0.0])
+    //     .build();
+    // let right_handle = rigid_body_set.insert(right_wall);
+    // let right_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
+    // collider_set.insert_with_parent(right_collider, right_handle, &mut rigid_body_set);
     
     // Create physics state
     let physics_state = PhysicsState {
@@ -737,7 +742,7 @@ fn init_physics() {
         impulse_joint_set: ImpulseJointSet::new(),
         multibody_joint_set: MultibodyJointSet::new(),
         ccd_solver: CCDSolver::new(),
-        gravity: vector![0.0, -1.81, 0.0], // Gravity pointing down in Y
+        gravity: vector![0.0, -0.3, 0.0], // Gravity pointing down in Y
     };
     
     if let Ok(mut guard) = PHYSICS_STATE.lock() {
@@ -2004,7 +2009,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
             render_internal();
             // redraw_requested = false; // logic removed
             // Sleep to prevent hot loop
-            std::thread::sleep(std::time::Duration::from_millis(10));
+           std::thread::sleep(std::time::Duration::from_millis(10));
         } else if !init_flag {
             // Log occasionally to not spam
             static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
