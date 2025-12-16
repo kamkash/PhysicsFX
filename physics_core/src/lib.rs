@@ -2,6 +2,7 @@ use once_cell::sync::Lazy;
 use raw_window_handle::{
     HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
+use wgpu::Device;
 use std::ffi::c_void; // Needed for casting
 use std::ffi::CString;
 use std::os::raw::c_char;
@@ -372,8 +373,11 @@ fn init_wgpu_internal(
         }
     };
 
-    let (device, queue) =
-        match pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+    // 1. Inspect what the hardware actually supports
+    let limits = adapter.limits();
+    log::info!("Adapter limits: {:#?}", limits);    
+
+    let _dd = wgpu::DeviceDescriptor {
             label: Some("physics_core device"),
             required_features: wgpu::Features::empty(),
             required_limits: {
@@ -388,7 +392,24 @@ fn init_wgpu_internal(
                 limits
             },
             ..Default::default()
-        })) {
+        };
+
+    let device_descriptor = wgpu::DeviceDescriptor {
+        label: Some("Mali Device"),
+        // Request specific mobile features if you need them (check availability first!)
+        required_features: wgpu::Features::empty(), //wgpu::Features::TEXTURE_COMPRESSION_ASTC | wgpu::Features::TEXTURE_COMPRESSION_ETC2, 
+        // CRITICAL: Use the adapter's own limits. 
+        // Do NOT use wgpu::Limits::default() which enforces desktop standards.
+        required_limits: limits,
+        ..Default::default()
+    };    
+
+
+
+    let (device, queue) =
+        match pollster::block_on(adapter.request_device(
+            &device_descriptor
+    )) {
             Ok(dq) => dq,
             Err(e) => {
                 log::error!("Failed to request device: {:?}", e);
@@ -403,10 +424,10 @@ fn init_wgpu_internal(
     // which leads to repeated 4x4 allocation failures. Prefer standard RGBA8/BGRA8
     // formats and only fall back to the first reported format if none are available.
     let preferred_formats = [
-        wgpu::TextureFormat::Bgra8UnormSrgb,
-        wgpu::TextureFormat::Bgra8Unorm,
         wgpu::TextureFormat::Rgba8UnormSrgb,
-        wgpu::TextureFormat::Rgba8Unorm,
+        // wgpu::TextureFormat::Bgra8UnormSrgb,
+        // wgpu::TextureFormat::Bgra8Unorm,
+        // wgpu::TextureFormat::Rgba8Unorm,
     ];
 
     let surface_format = preferred_formats
@@ -418,7 +439,8 @@ fn init_wgpu_internal(
                 .formats
                 .first()
                 .copied()
-                .unwrap_or(wgpu::TextureFormat::Bgra8Unorm)
+                // .unwrap_or(wgpu::TextureFormat::Bgra8Unorm)
+                .unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb)
         });
 
     let max_dimension = device.limits().max_texture_dimension_2d;
@@ -430,7 +452,8 @@ fn init_wgpu_internal(
         format: surface_format,
         width,
         height,
-        present_mode: wgpu::PresentMode::AutoVsync,
+        // present_mode: wgpu::PresentMode::AutoVsync,
+        present_mode: wgpu::PresentMode::Fifo,
         alpha_mode: surface_caps.alpha_modes[0],
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
@@ -1744,8 +1767,8 @@ pub fn start_winit_app() {
         window::WindowLevel,
     };
 
-    static WIDTH: u32 = 800;
-    static HEIGHT: u32 = 600;
+    static WIDTH: u32 = 1024;
+    static HEIGHT: u32 = 768;
 
     let event_loop = EventLoop::new().unwrap();
     let mut last_frame_time = std::time::Instant::now();
@@ -1876,7 +1899,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
         }
 
         app.poll_events(
-            Some(std::time::Duration::from_millis(16)),
+            Some(std::time::Duration::from_millis(8)),
             |event| match event {
                 PollEvent::Main(MainEvent::Destroy) => {
                     log::info!("MainEvent::Destroy");
@@ -1884,10 +1907,6 @@ pub extern "C" fn android_main(app: AndroidApp) {
                     quit = true;
                 }
 
-                // PollEvent::Main(MainEvent::TermWindow { .. }) => { // Error: variant not found
-                //    log::info!("MainEvent::TermWindow");
-                //    shutdown_internal();
-                // }
                 PollEvent::Main(MainEvent::TerminateWindow { .. }) => {
                     log::info!("MainEvent::TerminateWindow");
                     shutdown_internal();
