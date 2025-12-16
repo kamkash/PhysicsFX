@@ -377,6 +377,7 @@ fn init_wgpu_internal(
     let limits = adapter.limits();
     log::info!("Adapter limits: {:#?}", limits);    
 
+    // customize limits if needed
     let _dd = wgpu::DeviceDescriptor {
             label: Some("physics_core device"),
             required_features: wgpu::Features::empty(),
@@ -395,7 +396,7 @@ fn init_wgpu_internal(
         };
 
     let device_descriptor = wgpu::DeviceDescriptor {
-        label: Some("Mali Device"),
+        label: Some("physics_core Device"),
         // Request specific mobile features if you need them (check availability first!)
         required_features: wgpu::Features::empty(), //wgpu::Features::TEXTURE_COMPRESSION_ASTC | wgpu::Features::TEXTURE_COMPRESSION_ETC2, 
         // CRITICAL: Use the adapter's own limits. 
@@ -425,9 +426,9 @@ fn init_wgpu_internal(
     // formats and only fall back to the first reported format if none are available.
     let preferred_formats = [
         wgpu::TextureFormat::Rgba8UnormSrgb,
-        // wgpu::TextureFormat::Bgra8UnormSrgb,
-        // wgpu::TextureFormat::Bgra8Unorm,
-        // wgpu::TextureFormat::Rgba8Unorm,
+        wgpu::TextureFormat::Bgra8UnormSrgb,
+        wgpu::TextureFormat::Bgra8Unorm,
+        wgpu::TextureFormat::Rgba8Unorm,
     ];
 
     let surface_format = preferred_formats
