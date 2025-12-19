@@ -199,7 +199,9 @@ export PATH="$PATH:/Users/kamran/Library/Android/sdk/platform-tools"
 ./gradlew :composeApp:assembleDebug
 adb devices -l
 adb install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
-adb install -s <deviceId> ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
+adb -s <deviceId> install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
+adb -s HNY09H0M install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
+adb uninstall app.kamkash.physicsfx
 adb shell am start -n app.kamkash.physicsfx/.MainActivity
 adb shell am stop-app app.kamkash.physicsfx
 

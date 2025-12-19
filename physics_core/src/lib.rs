@@ -1,8 +1,9 @@
+mod egui_tools;
+
 use once_cell::sync::Lazy;
 use raw_window_handle::{
     HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
-use wgpu::Device;
 use std::ffi::c_void; // Needed for casting
 use std::ffi::CString;
 use std::os::raw::c_char;
@@ -17,6 +18,8 @@ use bevy_ecs::prelude::*;
 
 // Rapier3D imports
 use rapier3d::prelude::*;
+
+use crate::egui_tools::EguiRenderer;
 
 #[allow(dead_code)]
 extern "C" {
@@ -50,6 +53,8 @@ use wasm_bindgen::prelude::*;
 
 // Global state for game loop
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static WIDTH: u32 = 1024;
+static HEIGHT: u32 = 768;
 
 // --- ECS Components ---
 #[derive(Component, Clone, Copy)]
@@ -200,6 +205,18 @@ const VERTICES: &[Vertex] = &[
 
 const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
+use egui;
+use egui_wgpu;
+use egui_wgpu::RendererOptions;
+use egui_winit;
+use egui_wgpu::{wgpu, ScreenDescriptor};
+
+struct EguiSettings {
+    text_input: String,
+    slider_value: f32,
+    checkbox: bool,
+}
+
 /// Holds the wgpu state for rendering
 struct WgpuState {
     #[allow(dead_code)]
@@ -228,6 +245,9 @@ struct WgpuState {
     last_fps_log_time: f64,
     #[cfg(not(target_arch = "wasm32"))]
     last_fps_log_time: std::time::Instant,
+
+    scale_factor: f32,
+    egui_renderer: Option<EguiRenderer>,
 }
 
 // Wrapper to force Send/Sync for WASM where we know it's single-threaded
@@ -337,6 +357,7 @@ fn init_wgpu_internal(
     width: u32,
     height: u32,
     window_ptr_helper: *mut c_void, // Extra arg for tracking uniqueness
+    window: Option<&winit::window::Window>,
 ) -> bool {
     log::info!("Initializing wgpu with size {}x{}", width, height);
 
@@ -637,6 +658,12 @@ fn init_wgpu_internal(
         usage: wgpu::BufferUsages::INDEX,
     });
 
+    let egui_rend =  if let Some(w) = window {
+        Some(EguiRenderer::new(&device, config.format, None, 1, &w))
+    } else {
+        None
+    };
+
     let state = WgpuState {
         instance,
         device,
@@ -662,6 +689,9 @@ fn init_wgpu_internal(
         last_fps_log_time: web_sys::window().unwrap().performance().unwrap().now(),
         #[cfg(not(target_arch = "wasm32"))]
         last_fps_log_time: std::time::Instant::now(),
+
+        scale_factor: 1.0,
+        egui_renderer: egui_rend,
     };
 
     #[cfg(target_arch = "wasm32")]
@@ -881,7 +911,7 @@ fn sync_physics_to_gpu() {
     }
 }
 
-fn render_internal() {
+fn render_internal(window: Option<&winit::window::Window>) {
     // log::info!("render_internal called");
 
     static FPS_CAP_MS: f64 = 12.0f64; // Approx 60 FPS.  16.6ms = 1000/60. Allow slight tolerance?
@@ -939,9 +969,14 @@ fn render_internal() {
                     return;
                 }
             };
+
             let view = output
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
+
+            let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
 
             // --- Compute Encoder (disabled - physics now drives updates) ---
             // {
@@ -960,11 +995,9 @@ fn render_internal() {
             //     state.queue.submit(std::iter::once(encoder.finish()));
             // }
 
+
             // --- Render Encoder ---
             {
-                let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Render Encoder"),
-                });
                 {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Render Pass"),
@@ -997,6 +1030,55 @@ fn render_internal() {
                     
                     render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..state.num_instances);
                 }
+
+
+                let screen_descriptor = ScreenDescriptor {
+                    size_in_pixels: [WIDTH, HEIGHT],
+                    pixels_per_point: 2.0f32,
+                };
+
+                state.egui_renderer.as_mut().map(|egui_rend| {
+
+                    egui_rend.begin_frame(window.unwrap());
+
+                    egui::Window::new("winit + egui + wgpu says hello!")
+                        .resizable(true)
+                        .vscroll(true)
+                        .default_open(false)
+                        .fade_out(true)
+                        .show(egui_rend.context(), |ui| {
+                            ui.label("Label!");
+
+                            if ui.button("Button!").clicked() {
+                                println!("boom!")
+                            }
+
+                            ui.separator();
+                            ui.horizontal(|ui| {
+                                ui.label(format!(
+                                    "Pixels per point: {}",
+                                    egui_rend.context().pixels_per_point()
+                                ));
+                                if ui.button("-").clicked() {
+                                    state.scale_factor = (state.scale_factor - 0.1).max(0.3);
+                                }
+                                if ui.button("+").clicked() {
+                                    state.scale_factor = (state.scale_factor + 0.1).min(3.0);
+                                }
+                            });
+                        });
+
+                        egui_rend.end_frame_and_draw(
+                            &state.device,
+                            &state.queue,
+                            &mut encoder,
+                            window.unwrap(),
+                            &view,
+                            screen_descriptor,
+                        );                    
+                });
+
+
                 state.queue.submit(std::iter::once(encoder.finish()));
             }
 
@@ -1207,6 +1289,7 @@ pub extern "C" fn wgpu_init(
             width as u32,
             height as u32,
             surface_handle,
+            None
         )
     }
 
@@ -1229,7 +1312,7 @@ pub extern "C" fn wgpu_render() {
     if !INITIALIZED.load(Ordering::Relaxed) {
         return;
     }
-    render_internal();
+    render_internal(None);
 }
 
 #[no_mangle]
@@ -1691,6 +1774,9 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         last_fps_log_time: web_sys::window().unwrap().performance().unwrap().now(),
         #[cfg(not(target_arch = "wasm32"))]
         last_fps_log_time: std::time::Instant::now(),
+        
+        scale_factor: 1.0,
+        egui_renderer: None,
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -1718,7 +1804,7 @@ pub fn wasm_update(delta_time: f32) {
 #[wasm_bindgen]
 pub fn wasm_render() {
     // log::info!("wasm_render called");
-    render_internal();
+    render_internal(None);
 }
 
 #[cfg(feature = "wasm_support")]
@@ -1761,23 +1847,21 @@ pub fn wasm_shutdown() {
 pub fn start_winit_app() {
     use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
-    use winit::{
+ use winit::{
         event::{Event, WindowEvent},
         event_loop::EventLoop,
-        window::WindowBuilder,
-        window::WindowLevel,
+        window::WindowAttributes, 
     };
 
-    static WIDTH: u32 = 1024;
-    static HEIGHT: u32 = 768;
 
     let event_loop = EventLoop::new().unwrap();
     let mut last_frame_time = std::time::Instant::now();
-    let window = WindowBuilder::new()
+    let window = event_loop.create_window(
+        WindowAttributes::default()
             .with_title("PhysicsFX (Rust Winit)")
-            .with_inner_size(winit::dpi::PhysicalSize::new(WIDTH, HEIGHT))
-            .build(&event_loop)
-            .unwrap();
+            .with_inner_size(winit::dpi::LogicalSize::new(WIDTH, HEIGHT))
+    ).unwrap();
+
     #[cfg(target_os = "windows")]
     window.set_window_level(WindowLevel::AlwaysOnTop);
     #[cfg(target_os = "windows")]
@@ -1808,6 +1892,7 @@ pub fn start_winit_app() {
         width,
         height,
         std::ptr::null_mut(),
+        Some(&window)
     ) {
         // Pass null for helper if not needed or not available easily
         log::error!("Failed to initialize wgpu");
@@ -1816,43 +1901,54 @@ pub fn start_winit_app() {
     }
 
     event_loop
-        .run(|event, target| match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => target.exit(),
 
-                WindowEvent::Resized(size) => {
-                    let width = size.width;
 
-                    let height = size.height;
+        .run(|event, target| {
+            match event {
+                Event::WindowEvent { event, .. } => {
+                    if let Ok(mut guard) = WGPU_STATE.lock() {
+                        if let Some(state) = guard.0.as_mut() {
+                            if let Some(egui_rend) = state.egui_renderer.as_mut() {
+                                egui_rend.handle_input(window.as_ref(), &event);
+                            }
+                        }
+                    }
+                    
+                    match event {
+                        WindowEvent::CloseRequested => target.exit(),
 
-                    if width > 0 && height > 0 {
-                        resize_internal(width, height);
+                        WindowEvent::Resized(size) => {
+                            let width = size.width;
+                            let height = size.height;
 
-                        window.request_redraw();
+                            if width > 0 && height > 0 {
+                                resize_internal(width, height);
+                                window.request_redraw();
+                            }
+                        }
+
+                        WindowEvent::RedrawRequested => {
+                            let now = std::time::Instant::now();
+                            let dt = now.duration_since(last_frame_time).as_secs_f32();
+                            last_frame_time = now;
+                            
+                            update_internal(dt);
+                            render_internal(Some(window.as_ref()));
+
+                            window.request_redraw();
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
+
+                        _ => (),
                     }
                 }
 
-                WindowEvent::RedrawRequested => {
-                    let now = std::time::Instant::now();
-                    let dt = now.duration_since(last_frame_time).as_secs_f32();
-                    last_frame_time = now;
-                    
-                    update_internal(dt);
-                    render_internal();
-
+                Event::AboutToWait => {
                     window.request_redraw();
-                    // Sleep to prevent CPU burn if redraw is fast
-                    std::thread::sleep(std::time::Duration::from_millis(10));
                 }
 
                 _ => (),
-            },
-
-            Event::AboutToWait => {
-                window.request_redraw();
             }
-
-            _ => (),
         })
         .unwrap();
 }
@@ -1957,6 +2053,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
                             width as u32,
                             height as u32,
                             window_ptr as *mut c_void,
+                            None
                         );
                         log::info!("init_wgpu_internal returned: {}", init_result);
                         log::info!("INITIALIZED flag is now: {}", INITIALIZED.load(Ordering::Relaxed));
@@ -2010,6 +2107,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
                                 width as u32,
                                 height as u32,
                                 window_ptr as *mut c_void,
+                                None
                             );
                         } else {
                             resize_internal(width as u32, height as u32);
@@ -2032,7 +2130,7 @@ pub extern "C" fn android_main(app: AndroidApp) {
             last_frame_time = now;
 
             update_internal(dt);
-            render_internal();
+            render_internal(None);
             // redraw_requested = false; // logic removed
             // Sleep to prevent hot loop
            std::thread::sleep(std::time::Duration::from_millis(10));
