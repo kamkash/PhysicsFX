@@ -268,7 +268,7 @@ tasks.register("buildRustAndroid") {
         for (target in targets) {
             exec {
                 workingDir = rustDir
-                commandLine("cargo", "ndk", "--target", target, "--platform", "24", "build", "--release")
+                commandLine("cargo", "ndk", "--target", target, "--platform", "24", "build", "--release", "--features", "jni_support")
             }
         }
         

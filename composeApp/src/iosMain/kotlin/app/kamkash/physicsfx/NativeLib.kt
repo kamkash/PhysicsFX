@@ -11,4 +11,9 @@ actual object NativeLib {
         physics_core_free_string(cString)
         return result
     }
+
+    actual fun setGravity(y: Float) {}
+    actual fun setTimeScale(scale: Float) {}
+    actual fun setPaused(paused: Boolean) {}
+    actual fun resetSimulation() {}
 }

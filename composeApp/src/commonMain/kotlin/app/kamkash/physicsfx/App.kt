@@ -21,8 +21,8 @@ fun App() {
                 // WebGPU Rendering Surface
                 WgpuRenderSurface(modifier = Modifier.weight(3f).fillMaxHeight())
 
-                // Info panel
-                Column(modifier = Modifier.weight(1f).fillMaxHeight()) { InfoPanel() }
+                // Controls panel
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) { SidePanel() }
             }
         }
     }
@@ -103,6 +103,9 @@ fun InfoPanel() {
         }
     }
 }
+
+// Platform-specific side panel (expect/actual pattern)
+@Composable expect fun SidePanel()
 
 // Platform-specific rendering view (expect/actual pattern)
 @Composable expect fun WgpuNativeView(modifier: Modifier = Modifier)

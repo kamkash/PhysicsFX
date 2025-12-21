@@ -7,7 +7,15 @@ export function wasm_init(canvas_id: string, width: number, height: number): Pro
 
 export function wasm_render(): void;
 
+export function wasm_reset_simulation(): void;
+
 export function wasm_resize(width: number, height: number): void;
+
+export function wasm_set_gravity(y: number): void;
+
+export function wasm_set_paused(paused: boolean): void;
+
+export function wasm_set_time_scale(scale: number): void;
 
 export function wasm_shutdown(): void;
 
@@ -31,6 +39,10 @@ export interface InitOutput {
   readonly wasm_render: () => void;
   readonly wasm_resize: (a: number, b: number) => void;
   readonly wasm_shutdown: () => void;
+  readonly wasm_set_gravity: (a: number) => void;
+  readonly wasm_set_time_scale: (a: number) => void;
+  readonly wasm_set_paused: (a: number) => void;
+  readonly wasm_reset_simulation: () => void;
   readonly wasm_bindgen__convert__closures_____invoke__h62e53448fb7e4d31: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen__closure__destroy__h7247d2cb8ecc6b8d: (a: number, b: number) => void;
   readonly wasm_bindgen__convert__closures_____invoke__h404c9f566fafd69f: (a: number, b: number, c: any, d: any) => void;

@@ -81,7 +81,6 @@ struct PhysicsBody {
     collider_handle: ColliderHandle,
 }
 
-// --- Physics State ---
 struct PhysicsState {
     world: World,
     rigid_body_set: RigidBodySet,
@@ -95,6 +94,8 @@ struct PhysicsState {
     multibody_joint_set: MultibodyJointSet,
     ccd_solver: CCDSolver,
     gravity: Vector<Real>,
+    paused: bool,
+    time_scale: f32,
 }
 
 // Wrapper for thread safety
@@ -799,7 +800,9 @@ fn init_physics() {
         impulse_joint_set: ImpulseJointSet::new(),
         multibody_joint_set: MultibodyJointSet::new(),
         ccd_solver: CCDSolver::new(),
-        gravity: vector![0.0, -0.3, 0.0], // Gravity pointing down in Y
+        gravity: vector![0.0, -9.81, 0.0], // Gravity pointing down in Y (Standard Earth Gravity)
+        paused: false,
+        time_scale: 1.0,
     };
     
     if let Ok(mut guard) = PHYSICS_STATE.lock() {
@@ -825,11 +828,17 @@ fn resize_internal(width: u32, height: u32) {
         }
     }
 }
-
 fn update_internal(_dt: f32) {
     // Step physics simulation
     if let Ok(mut guard) = PHYSICS_STATE.lock() {
         if let Some(physics) = guard.0.as_mut() {
+            if physics.paused {
+                return;
+            }
+
+            // Apply time scale to integration parameters
+            physics.integration_parameters.dt = _dt * physics.time_scale;
+
             // Step the physics simulation
             physics.physics_pipeline.step(
                 &physics.gravity,
@@ -1033,39 +1042,63 @@ fn render_internal(window: Option<&winit::window::Window>) {
 
 
                 let screen_descriptor = ScreenDescriptor {
-                    size_in_pixels: [WIDTH, HEIGHT],
-                    pixels_per_point: 2.0f32,
+                    size_in_pixels: [state.config.width, state.config.height],
+                    pixels_per_point: state.scale_factor,
                 };
 
                 state.egui_renderer.as_mut().map(|egui_rend| {
 
                     egui_rend.begin_frame(window.unwrap());
 
-                    egui::Window::new("winit + egui + wgpu says hello!")
+                    egui::Window::new("Physics Controls")
                         .resizable(true)
-                        .vscroll(true)
-                        .default_open(false)
-                        .fade_out(true)
+                        .default_width(300.0)
                         .show(egui_rend.context(), |ui| {
-                            ui.label("Label!");
-
-                            if ui.button("Button!").clicked() {
-                                println!("boom!")
-                            }
+                            ui.vertical_centered(|ui| {
+                                ui.heading("Physics Controls");
+                            });
 
                             ui.separator();
-                            ui.horizontal(|ui| {
-                                ui.label(format!(
-                                    "Pixels per point: {}",
-                                    egui_rend.context().pixels_per_point()
-                                ));
-                                if ui.button("-").clicked() {
-                                    state.scale_factor = (state.scale_factor - 0.1).max(0.3);
+
+                            let mut physics_guard = PHYSICS_STATE.lock().unwrap();
+                            if let Some(physics) = physics_guard.0.as_mut() {
+                                // Gravity Slider (Y component)
+                                ui.label(format!("Gravity: {:.1} m/s²", physics.gravity.y.abs()));
+                                let mut g_y = physics.gravity.y.abs();
+                                if ui.add(egui::Slider::new(&mut g_y, 0.0..=20.0)).changed() {
+                                    physics.gravity.y = -g_y;
                                 }
-                                if ui.button("+").clicked() {
-                                    state.scale_factor = (state.scale_factor + 0.1).min(3.0);
+
+                                ui.add_space(8.0);
+
+                                // Time Scale Slider
+                                ui.label(format!("Time Scale: {:.1}x", physics.time_scale));
+                                ui.add(egui::Slider::new(&mut physics.time_scale, 0.1..=5.0));
+
+                                ui.add_space(16.0);
+
+                                // Pause Toggle
+                                ui.checkbox(&mut physics.paused, "Pause Simulation");
+
+                                ui.add_space(24.0);
+
+                                // Reset Button
+                                if ui.button("Reset Simulation").clicked() {
+                                    // Drop lock before calling init_physics to avoid deadlock if it locks again
+                                    drop(physics_guard);
+                                    init_physics();
+                                } else {
+                                    // Native Info (at bottom)
+                                    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                                        ui.add_space(8.0);
+                                        ui.small(get_internal_info());
+                                        ui.label("Native Info:");
+                                        ui.separator();
+                                    });
                                 }
-                            });
+                            } else {
+                                ui.label("Physics state not available");
+                            }
                         });
 
                         egui_rend.end_frame_and_draw(
@@ -1341,6 +1374,57 @@ pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_getInfo(
     let info = get_internal_info();
     let output = env.new_string(info).expect("Couldn't create java string!");
     output.into_raw()
+}
+
+#[cfg(feature = "jni_support")]
+#[no_mangle]
+pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_setGravity(
+    _env: JNIEnv,
+    _class: JClass,
+    y: jfloat,
+) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.gravity.y = -(y as f32);
+        }
+    }
+}
+
+#[cfg(feature = "jni_support")]
+#[no_mangle]
+pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_setTimeScale(
+    _env: JNIEnv,
+    _class: JClass,
+    scale: jfloat,
+) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.time_scale = scale as f32;
+        }
+    }
+}
+
+#[cfg(feature = "jni_support")]
+#[no_mangle]
+pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_setPaused(
+    _env: JNIEnv,
+    _class: JClass,
+    paused: jboolean,
+) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.paused = paused != 0;
+        }
+    }
+}
+
+#[cfg(feature = "jni_support")]
+#[no_mangle]
+pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_resetSimulation(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    init_physics();
 }
 
 #[cfg(feature = "jni_support")]
@@ -1839,6 +1923,42 @@ pub fn wasm_resize(width: u32, height: u32) {
 #[wasm_bindgen]
 pub fn wasm_shutdown() {
     wgpu_shutdown();
+}
+
+#[cfg(feature = "wasm_support")]
+#[wasm_bindgen]
+pub fn wasm_set_gravity(y: f32) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.gravity.y = -y;
+        }
+    }
+}
+
+#[cfg(feature = "wasm_support")]
+#[wasm_bindgen]
+pub fn wasm_set_time_scale(scale: f32) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.time_scale = scale;
+        }
+    }
+}
+
+#[cfg(feature = "wasm_support")]
+#[wasm_bindgen]
+pub fn wasm_set_paused(paused: bool) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.paused = paused;
+        }
+    }
+}
+
+#[cfg(feature = "wasm_support")]
+#[wasm_bindgen]
+pub fn wasm_reset_simulation() {
+    init_physics();
 }
 
 // --- Winit Standalone App (for JVM Debugging) ---

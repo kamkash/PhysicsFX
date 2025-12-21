@@ -1,0 +1,77 @@
+package app.kamkash.physicsfx
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+@Composable
+actual fun SidePanel() {
+    var nativeInfo by remember { mutableStateOf("Loading...") }
+
+    LaunchedEffect(Unit) {
+        nativeInfo =
+                try {
+                    NativeLib.getInfo()
+                } catch (e: Exception) {
+                    "Error: ${e.message}"
+                }
+    }
+
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(
+                modifier = Modifier.padding(16.dp).fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(text = "Physics Controls", style = MaterialTheme.typography.headlineSmall)
+
+            HorizontalDivider()
+
+            // Gravity Slider
+            var gravity by remember { mutableStateOf(9.8f) }
+            Column {
+                Text(
+                        text = "Gravity: ${String.format("%.1f", gravity)} m/s²",
+                        style = MaterialTheme.typography.bodyMedium
+                )
+                Slider(value = gravity, onValueChange = { gravity = it }, valueRange = 0f..20f)
+            }
+
+            // Simulation Speed
+            var speed by remember { mutableStateOf(1.0f) }
+            Column {
+                Text(
+                        text = "Time Scale: ${String.format("%.1f", speed)}x",
+                        style = MaterialTheme.typography.bodyMedium
+                )
+                Slider(value = speed, onValueChange = { speed = it }, valueRange = 0.1f..5f)
+            }
+
+            // Pause Toggle
+            Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "Pause Simulation", style = MaterialTheme.typography.bodyMedium)
+                var paused by remember { mutableStateOf(false) }
+                Switch(checked = paused, onCheckedChange = { paused = it })
+            }
+
+            Button(onClick = { /* Implement reset logic */}, modifier = Modifier.fillMaxWidth()) {
+                Text("Reset Simulation")
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Text(
+                    text = "Native Info:",
+                    style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                    text = nativeInfo,
+                    style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}

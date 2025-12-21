@@ -10,13 +10,12 @@ import androidx.compose.ui.graphics.Color
 
 @Composable
 actual fun WgpuNativeView(modifier: Modifier) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "Rendering via Winit Window",
-            color = Color.White
-        )
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text = "Rendering via Winit Window", color = Color.White)
     }
+}
+
+@Composable
+actual fun SidePanel() {
+    InfoPanel()
 }
