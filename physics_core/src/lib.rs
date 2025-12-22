@@ -54,7 +54,8 @@ use wasm_bindgen::prelude::*;
 // Global state for game loop
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static WIDTH: u32 = 1024;
-static HEIGHT: u32 = 768;
+static HEIGHT: u32 = 1024;
+static NUM_INSTANCES_PER_ROW: u32 = 10;
 
 // --- ECS Components ---
 #[derive(Component, Clone, Copy)]
@@ -532,7 +533,6 @@ fn init_wgpu_internal(
     });
 
     // --- Instance Data Setup ---
-    const NUM_INSTANCES_PER_ROW: u32 = 10;
     const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
     let mut instances = Vec::new();
     for y in 0..NUM_INSTANCES_PER_ROW {
@@ -718,7 +718,6 @@ fn init_physics() {
     let mut collider_set = ColliderSet::new();
     
     // Grid configuration (must match instance creation)
-    const NUM_INSTANCES_PER_ROW: u32 = 10;
     const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
     
     // Create dynamic rigid bodies for each instance
@@ -764,28 +763,28 @@ fn init_physics() {
     collider_set.insert_with_parent(bottom_collider, bottom_handle, &mut rigid_body_set);
     
     // Top wall
-    // let top_wall = RigidBodyBuilder::fixed()
-    //     .translation(vector![0.0, 1.1, 0.0])
-    //     .build();
-    // let top_handle = rigid_body_set.insert(top_wall);
-    // let top_collider = ColliderBuilder::cuboid(2.0, 0.1, 0.1).build();
-    // collider_set.insert_with_parent(top_collider, top_handle, &mut rigid_body_set);
+    let top_wall = RigidBodyBuilder::fixed()
+        .translation(vector![0.0, 1.1, 0.0])
+        .build();
+    let top_handle = rigid_body_set.insert(top_wall);
+    let top_collider = ColliderBuilder::cuboid(2.0, 0.1, 0.1).build();
+    collider_set.insert_with_parent(top_collider, top_handle, &mut rigid_body_set);
     
-    // // Left wall
-    // let left_wall = RigidBodyBuilder::fixed()
-    //     .translation(vector![-1.1, 0.0, 0.0])
-    //     .build();
-    // let left_handle = rigid_body_set.insert(left_wall);
-    // let left_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
-    // collider_set.insert_with_parent(left_collider, left_handle, &mut rigid_body_set);
+    // Left wall
+    let left_wall = RigidBodyBuilder::fixed()
+        .translation(vector![-1.1, 0.0, 0.0])
+        .build();
+    let left_handle = rigid_body_set.insert(left_wall);
+    let left_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
+    collider_set.insert_with_parent(left_collider, left_handle, &mut rigid_body_set);
     
-    // // Right wall
-    // let right_wall = RigidBodyBuilder::fixed()
-    //     .translation(vector![1.1, 0.0, 0.0])
-    //     .build();
-    // let right_handle = rigid_body_set.insert(right_wall);
-    // let right_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
-    // collider_set.insert_with_parent(right_collider, right_handle, &mut rigid_body_set);
+    // Right wall
+    let right_wall = RigidBodyBuilder::fixed()
+        .translation(vector![1.1, 0.0, 0.0])
+        .build();
+    let right_handle = rigid_body_set.insert(right_wall);
+    let right_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
+    collider_set.insert_with_parent(right_collider, right_handle, &mut rigid_body_set);
     
     // Create physics state
     let physics_state = PhysicsState {
@@ -800,7 +799,7 @@ fn init_physics() {
         impulse_joint_set: ImpulseJointSet::new(),
         multibody_joint_set: MultibodyJointSet::new(),
         ccd_solver: CCDSolver::new(),
-        gravity: vector![0.0, -9.81, 0.0], // Gravity pointing down in Y (Standard Earth Gravity)
+        gravity: vector![0.0, -4.81, 0.0], // Gravity pointing down in Y (Standard Earth Gravity)
         paused: false,
         time_scale: 1.0,
     };
@@ -1188,6 +1187,38 @@ pub extern "C" fn physics_core_free_string(s: *mut c_char) {
     unsafe {
         let _ = CString::from_raw(s);
     }
+}
+
+#[no_mangle]
+pub extern "C" fn physics_core_set_gravity(y: f32) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.gravity.y = -y;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn physics_core_set_time_scale(scale: f32) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.time_scale = scale;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn physics_core_set_paused(paused: bool) {
+    if let Ok(mut guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = guard.0.as_mut() {
+            physics.paused = paused;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn physics_core_reset_simulation() {
+    init_physics();
 }
 
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]

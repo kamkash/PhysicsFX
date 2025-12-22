@@ -20,4 +20,10 @@ void wgpu_render();
 void wgpu_resize(int32_t width, int32_t height);
 void wgpu_shutdown();
 
+// Simulation controls
+void physics_core_set_gravity(float y);
+void physics_core_set_time_scale(float scale);
+void physics_core_set_paused(bool paused);
+void physics_core_reset_simulation();
+
 #endif

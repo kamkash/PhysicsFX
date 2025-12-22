@@ -12,8 +12,19 @@ actual object NativeLib {
         return result
     }
 
-    actual fun setGravity(y: Float) {}
-    actual fun setTimeScale(scale: Float) {}
-    actual fun setPaused(paused: Boolean) {}
-    actual fun resetSimulation() {}
+    actual fun setGravity(y: Float) {
+        physics_core_set_gravity(y)
+    }
+
+    actual fun setTimeScale(scale: Float) {
+        physics_core_set_time_scale(scale)
+    }
+
+    actual fun setPaused(paused: Boolean) {
+        physics_core_set_paused(paused)
+    }
+
+    actual fun resetSimulation() {
+        physics_core_reset_simulation()
+    }
 }

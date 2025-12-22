@@ -35,7 +35,14 @@ actual fun SidePanel() {
                         text = "Gravity: ${String.format("%.1f", gravity)} m/s²",
                         style = MaterialTheme.typography.bodyMedium
                 )
-                Slider(value = gravity, onValueChange = { gravity = it }, valueRange = 0f..20f)
+                Slider(
+                        value = gravity,
+                        onValueChange = {
+                            gravity = it
+                            NativeLib.setGravity(it)
+                        },
+                        valueRange = 0f..20f
+                )
             }
 
             // Simulation Speed
@@ -45,7 +52,14 @@ actual fun SidePanel() {
                         text = "Time Scale: ${String.format("%.1f", speed)}x",
                         style = MaterialTheme.typography.bodyMedium
                 )
-                Slider(value = speed, onValueChange = { speed = it }, valueRange = 0.1f..5f)
+                Slider(
+                        value = speed,
+                        onValueChange = {
+                            speed = it
+                            NativeLib.setTimeScale(it)
+                        },
+                        valueRange = 0.1f..5f
+                )
             }
 
             // Pause Toggle
@@ -55,10 +69,16 @@ actual fun SidePanel() {
             ) {
                 Text(text = "Pause Simulation", style = MaterialTheme.typography.bodyMedium)
                 var paused by remember { mutableStateOf(false) }
-                Switch(checked = paused, onCheckedChange = { paused = it })
+                Switch(
+                        checked = paused,
+                        onCheckedChange = {
+                            paused = it
+                            NativeLib.setPaused(it)
+                        }
+                )
             }
 
-            Button(onClick = { /* Implement reset logic */}, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { NativeLib.resetSimulation() }, modifier = Modifier.fillMaxWidth()) {
                 Text("Reset Simulation")
             }
 
