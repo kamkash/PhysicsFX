@@ -378,7 +378,7 @@ export function wasm_render() {
 }
 
 export function wasm_reset_simulation() {
-    wasm.wasm_reset_simulation();
+    wasm.physics_core_reset_simulation();
 }
 
 /**
@@ -393,7 +393,7 @@ export function wasm_resize(width, height) {
  * @param {number} y
  */
 export function wasm_set_gravity(y) {
-    wasm.wasm_set_gravity(y);
+    wasm.physics_core_set_gravity(y);
 }
 
 /**
@@ -407,7 +407,7 @@ export function wasm_set_paused(paused) {
  * @param {number} scale
  */
 export function wasm_set_time_scale(scale) {
-    wasm.wasm_set_time_scale(scale);
+    wasm.physics_core_set_time_scale(scale);
 }
 
 export function wasm_shutdown() {
