@@ -25,5 +25,7 @@ void physics_core_set_gravity(float y);
 void physics_core_set_time_scale(float scale);
 void physics_core_set_paused(bool paused);
 void physics_core_reset_simulation();
+void physics_core_on_pointer_event(int32_t event_type, float x, float y, int32_t button);
+void physics_core_on_key_event(int32_t event_type, int32_t key_code);
 
 #endif

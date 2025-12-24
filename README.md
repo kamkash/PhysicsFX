@@ -35,6 +35,7 @@ in your IDE’s toolbar or run it directly from the terminal:
 * on macOS/Linux
 
   ```shell
+  RUST_LOG=debug ./gradlew composeApp:run
   ./gradlew :composeApp:run
   ```
 
@@ -240,6 +241,7 @@ xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphoneos \
 # Android sdk
 
 ```bash
+RUST_LOG=debug ./gradlew :composeApp:run
 export PATH="$PATH:/Users/kamran/Library/Android/sdk/platform-tools"
 ./gradlew :composeApp:assembleDebug
 adb devices -l

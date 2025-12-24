@@ -5,6 +5,10 @@ export function wasm_get_info(): string;
 
 export function wasm_init(canvas_id: string, width: number, height: number): Promise<boolean>;
 
+export function wasm_on_key_event(event_type: number, key_code: number): void;
+
+export function wasm_on_pointer_event(event_type: number, x: number, y: number, button: number): void;
+
 export function wasm_render(): void;
 
 export function wasm_reset_simulation(): void;
@@ -32,6 +36,8 @@ export interface InitOutput {
   readonly physics_core_set_time_scale: (a: number) => void;
   readonly physics_core_set_paused: (a: number) => void;
   readonly physics_core_reset_simulation: () => void;
+  readonly physics_core_on_pointer_event: (a: number, b: number, c: number, d: number) => void;
+  readonly physics_core_on_key_event: (a: number, b: number) => void;
   readonly wgpu_init: (a: number, b: number, c: number) => number;
   readonly wgpu_update: (a: number) => void;
   readonly wgpu_render: () => void;
@@ -44,8 +50,10 @@ export interface InitOutput {
   readonly wasm_resize: (a: number, b: number) => void;
   readonly wasm_shutdown: () => void;
   readonly wasm_set_paused: (a: number) => void;
+  readonly wasm_on_pointer_event: (a: number, b: number, c: number, d: number) => void;
   readonly wasm_reset_simulation: () => void;
   readonly wasm_set_gravity: (a: number) => void;
+  readonly wasm_on_key_event: (a: number, b: number) => void;
   readonly wasm_set_time_scale: (a: number) => void;
   readonly wasm_bindgen__convert__closures_____invoke__h62e53448fb7e4d31: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen__closure__destroy__h7247d2cb8ecc6b8d: (a: number, b: number) => void;

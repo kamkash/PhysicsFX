@@ -9,6 +9,13 @@ struct Instance {
 @group(0) @binding(0)
 var<storage, read_write> instances: array<Instance>;
 
+struct CameraUniform {
+    view_proj: mat4x4<f32>,
+};
+
+@group(1) @binding(0)
+var<uniform> camera: CameraUniform;
+
 // Compute Shader
 @compute @workgroup_size(64)
 fn update_instances(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -91,7 +98,7 @@ fn vs_main(
 
     var out: VertexOutput;
     out.tex_coords = model.tex_coords; // + instance.i_uv if we wanted UV scrolling
-    out.clip_position = vec4<f32>(world_pos, 1.0);
+    out.clip_position = camera.view_proj * vec4<f32>(world_pos, 1.0);
     return out;
 }
 

@@ -33,6 +33,38 @@ class MetalView : UIView {
         }
     }
 
+    override fun touchesBegan(touches: Set<*>, withEvent: UIEvent?) {
+        super.touchesBegan(touches, withEvent)
+        handleTouches(touches, 0)
+    }
+
+    override fun touchesMoved(touches: Set<*>, withEvent: UIEvent?) {
+        super.touchesMoved(touches, withEvent)
+        handleTouches(touches, 1)
+    }
+
+    override fun touchesEnded(touches: Set<*>, withEvent: UIEvent?) {
+        super.touchesEnded(touches, withEvent)
+        handleTouches(touches, 2)
+    }
+
+    override fun touchesCancelled(touches: Set<*>, withEvent: UIEvent?) {
+        super.touchesCancelled(touches, withEvent)
+        handleTouches(touches, 2)
+    }
+
+    private fun handleTouches(touches: Set<*>, eventType: Int) {
+        val touch = touches.firstOrNull() as? UITouch ?: return
+        val location = touch.locationInView(this)
+        val scale = contentScaleFactor
+        NativeLib.onPointerEvent(
+                eventType,
+                (location.useContents { x } * scale).toFloat(),
+                (location.useContents { y } * scale).toFloat(),
+                0
+        )
+    }
+
     companion object : UIViewMeta() {
         override fun layerClass() = CAMetalLayer.`class`()!!
     }

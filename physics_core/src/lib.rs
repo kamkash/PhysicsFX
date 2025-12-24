@@ -1,4 +1,8 @@
 mod egui_tools;
+mod camera;
+
+use camera::{Camera, CameraUniform};
+use ::nalgebra as na;
 
 use once_cell::sync::Lazy;
 use raw_window_handle::{
@@ -32,7 +36,7 @@ extern "C" {
 #[cfg(target_os = "android")]
 use android_activity::{
     input::{InputEvent, MotionAction},
-    AndroidApp, InputStatus, MainEvent, PollEvent,
+    AndroidApp, MainEvent, PollEvent,
 };
 #[cfg(target_os = "android")]
 use android_logger::Config;
@@ -45,7 +49,6 @@ use jni::JNIEnv;
 #[cfg(target_os = "android")]
 use log::LevelFilter;
 #[cfg(target_os = "android")]
-use ndk::native_window::NativeWindow;
 #[cfg(target_os = "android")]
 use raw_window_handle::{AndroidDisplayHandle, AndroidNdkWindowHandle};
 #[cfg(feature = "wasm_support")]
@@ -105,6 +108,45 @@ unsafe impl Send for PhysicsStateWrapper {}
 unsafe impl Sync for PhysicsStateWrapper {}
 
 static PHYSICS_STATE: Lazy<Mutex<PhysicsStateWrapper>> = Lazy::new(|| Mutex::new(PhysicsStateWrapper(None)));
+
+#[derive(Debug, Clone, Copy)]
+struct InputEventState {
+    pointer_x: f32,
+    pointer_y: f32,
+    pointer_down: bool,
+    last_key: Option<i32>,
+}
+
+static INPUT_STATE: Lazy<Mutex<InputEventState>> = Lazy::new(|| Mutex::new(InputEventState {
+    pointer_x: 0.0,
+    pointer_y: 0.0,
+    pointer_down: false,
+    last_key: None,
+}));
+
+fn on_pointer_event_internal(event_type: i32, x: f32, y: f32, _button: i32) {
+    if let Ok(mut guard) = INPUT_STATE.lock() {
+        // Only update x/y if they are not -1 (some platforms might send -1 for pure clicks)
+        if x >= 0.0 { guard.pointer_x = x; }
+        if y >= 0.0 { guard.pointer_y = y; }
+        
+        match event_type {
+            0 => guard.pointer_down = true,
+            2 => guard.pointer_down = false,
+            _ => {}
+        }
+        log::debug!("Pointer event: type={}, x={}, y={}", event_type, x, y);
+    }
+}
+
+fn on_key_event_internal(event_type: i32, key_code: i32) {
+    if let Ok(mut guard) = INPUT_STATE.lock() {
+        if event_type == 0 {
+            guard.last_key = Some(key_code);
+        }
+        log::debug!("Key event: type={}, code={}", event_type, key_code);
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -209,8 +251,6 @@ const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 use egui;
 use egui_wgpu;
-use egui_wgpu::RendererOptions;
-use egui_winit;
 use egui_wgpu::{wgpu, ScreenDescriptor};
 
 struct EguiSettings {
@@ -250,6 +290,10 @@ struct WgpuState {
 
     scale_factor: f32,
     egui_renderer: Option<EguiRenderer>,
+    camera: Camera,
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
 }
 
 // Wrapper to force Send/Sync for WASM where we know it's single-threaded
@@ -603,9 +647,55 @@ fn init_wgpu_internal(
     });
 
 
+    // --- Camera Setup ---
+    let camera = Camera {
+        eye: na::Point3::new(0.0, 0.0, 5.0),
+        target: na::Point3::new(0.0, 0.0, 0.0),
+        up: na::Vector3::y(),
+        aspect: config.width as f32 / config.height as f32,
+        fovy: 45.0,
+        znear: 0.1,
+        zfar: 100.0,
+        is_orthographic: true,
+        ortho_size: 2.2, // fits -1.1 to 1.1 roughly
+    };
+
+    let mut camera_uniform = CameraUniform::new();
+    camera_uniform.update_view_proj(&camera);
+
+    let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Camera Buffer"),
+        contents: bytemuck::cast_slice(&[camera_uniform]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let camera_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("camera_bind_group_layout"),
+        });
+
+    let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &camera_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: camera_buffer.as_entire_binding(),
+        }],
+        label: Some("camera_bind_group"),
+    });
+
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &[&texture_bind_group_layout],
+        bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
         push_constant_ranges: &[],
     });
 
@@ -693,6 +783,10 @@ fn init_wgpu_internal(
 
         scale_factor: 1.0,
         egui_renderer: egui_rend,
+        camera,
+        camera_uniform,
+        camera_buffer,
+        camera_bind_group,
     };
 
     #[cfg(target_arch = "wasm32")]
@@ -1041,6 +1135,7 @@ fn render_internal(window: Option<&winit::window::Window>) {
 
                     render_pass.set_pipeline(&state.render_pipeline);
                     render_pass.set_bind_group(0, &state.diffuse_bind_group, &[]);
+                    render_pass.set_bind_group(1, &state.camera_bind_group, &[]);
                     
                     render_pass.set_vertex_buffer(0, state.vertex_buffer.slice(..));
                     render_pass.set_vertex_buffer(1, state.instance_buffer.slice(..));
@@ -1256,6 +1351,16 @@ pub extern "C" fn physics_core_reset_simulation() {
     init_physics();
 }
 
+#[no_mangle]
+pub extern "C" fn physics_core_on_pointer_event(event_type: i32, x: f32, y: f32, button: i32) {
+    on_pointer_event_internal(event_type, x, y, button);
+}
+
+#[no_mangle]
+pub extern "C" fn physics_core_on_key_event(event_type: i32, key_code: i32) {
+    on_key_event_internal(event_type, key_code);
+}
+
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 fn init_logging() {
     use std::sync::Once;
@@ -1392,8 +1497,6 @@ pub extern "C" fn wgpu_init(
         )
     }
 
-    #[cfg(target_arch = "wasm32")]
-    false
 }
 
 #[no_mangle]
@@ -1491,6 +1594,30 @@ pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_resetSimulation(
     _class: JClass,
 ) {
     init_physics();
+}
+
+#[cfg(feature = "jni_support")]
+#[no_mangle]
+pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_onPointerEvent(
+    _env: JNIEnv,
+    _class: JClass,
+    event_type: jint,
+    x: jfloat,
+    y: jfloat,
+    button: jint,
+) {
+    on_pointer_event_internal(event_type as i32, x as f32, y as f32, button as i32);
+}
+
+#[cfg(feature = "jni_support")]
+#[no_mangle]
+pub extern "system" fn Java_app_kamkash_physicsfx_NativeLib_onKeyEvent(
+    _env: JNIEnv,
+    _class: JClass,
+    event_type: jint,
+    key_code: jint,
+) {
+    on_key_event_internal(event_type as i32, key_code as i32);
 }
 
 #[cfg(feature = "jni_support")]
@@ -1773,9 +1900,55 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("shader.wgsl"))),
     });
 
+    // --- Camera Setup ---
+    let camera = Camera {
+        eye: na::Point3::new(0.0, 0.0, 5.0),
+        target: na::Point3::new(0.0, 0.0, 0.0),
+        up: na::Vector3::y(),
+        aspect: config.width as f32 / config.height as f32,
+        fovy: 45.0,
+        znear: 0.1,
+        zfar: 100.0,
+        is_orthographic: true,
+        ortho_size: 2.2, // fits -1.1 to 1.1 roughly
+    };
+
+    let mut camera_uniform = CameraUniform::new();
+    camera_uniform.update_view_proj(&camera);
+
+    let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Camera Buffer"),
+        contents: bytemuck::cast_slice(&[camera_uniform]),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let camera_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("camera_bind_group_layout"),
+        });
+
+    let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &camera_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: camera_buffer.as_entire_binding(),
+        }],
+        label: Some("camera_bind_group"),
+    });
+
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &[&texture_bind_group_layout],
+        bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
         push_constant_ranges: &[],
     });
 
@@ -1927,6 +2100,10 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         
         scale_factor: 1.0,
         egui_renderer: None,
+        camera,
+        camera_uniform,
+        camera_buffer,
+        camera_bind_group,
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
@@ -2027,115 +2204,175 @@ pub fn wasm_reset_simulation() {
     init_physics();
 }
 
+#[cfg(feature = "wasm_support")]
+#[wasm_bindgen]
+pub fn wasm_on_pointer_event(event_type: i32, x: f32, y: f32, button: i32) {
+    on_pointer_event_internal(event_type, x, y, button);
+}
+
+#[cfg(feature = "wasm_support")]
+#[wasm_bindgen]
+pub fn wasm_on_key_event(event_type: i32, key_code: i32) {
+    on_key_event_internal(event_type, key_code);
+}
+
 // --- Winit Standalone App (for JVM Debugging) ---
 
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub fn start_winit_app() {
-    use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-
- use winit::{
-        event::{Event, WindowEvent},
-        event_loop::EventLoop,
-        window::WindowAttributes, 
+    use std::sync::Arc;
+    use winit::{
+        application::ApplicationHandler,
+        event::WindowEvent,
+        event_loop::{ActiveEventLoop, EventLoop},
+        window::{Window, WindowAttributes, WindowId},
     };
 
-
-    let event_loop = EventLoop::new().unwrap();
-    let mut last_frame_time = std::time::Instant::now();
-    let window = event_loop.create_window(
-        WindowAttributes::default()
-            .with_title("PhysicsFX (Rust Winit)")
-            .with_inner_size(winit::dpi::LogicalSize::new(WIDTH, HEIGHT))
-    ).unwrap();
-
-    #[cfg(target_os = "windows")]
-    window.set_window_level(WindowLevel::AlwaysOnTop);
-    #[cfg(target_os = "windows")]
-    window.set_window_level(WindowLevel::Normal);
-    let window = std::sync::Arc::new(
-        window
-    );
-
-
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-    {
-        init_logging();
+    struct App {
+        window: Option<Arc<Window>>,
+        last_frame_time: std::time::Instant,
     }
 
-    let width = window.inner_size().width;
+    impl ApplicationHandler for App {
+        fn resumed(&mut self, target: &ActiveEventLoop) {
+            if self.window.is_none() {
+                let win = Arc::new(
+                    target
+                        .create_window(
+                            WindowAttributes::default()
+                                .with_title("PhysicsFX (Rust Winit)")
+                                .with_inner_size(winit::dpi::LogicalSize::new(WIDTH, HEIGHT)),
+                        )
+                        .unwrap(),
+                );
 
-    let height = window.inner_size().height;
+                #[cfg(target_os = "windows")]
+                {
+                    use winit::window::WindowLevel;
+                    win.set_window_level(WindowLevel::AlwaysOnTop);
+                    win.set_window_level(WindowLevel::Normal);
+                }
 
-    let window_handle = window.window_handle().unwrap().as_raw();
+                #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+                {
+                    init_logging();
+                }
 
-    let display_handle = window.display_handle().unwrap().as_raw();
+                let width = win.inner_size().width;
+                let height = win.inner_size().height;
+                let window_handle = win.window_handle().unwrap().as_raw();
+                let display_handle = win.display_handle().unwrap().as_raw();
 
-    // Note: init_wgpu_internal expects rwh::RawWindowHandle, etc.
+                if !init_wgpu_internal(
+                    window_handle,
+                    display_handle,
+                    width,
+                    height,
+                    std::ptr::null_mut(),
+                    Some(&win),
+                ) {
+                    log::error!("Failed to initialize wgpu");
+                    return;
+                }
 
-    if !init_wgpu_internal(
-        window_handle,
-        display_handle,
-        width,
-        height,
-        std::ptr::null_mut(),
-        Some(&window)
-    ) {
-        // Pass null for helper if not needed or not available easily
-        log::error!("Failed to initialize wgpu");
+                self.window = Some(win);
+            }
+        }
 
-        return;
-    }
+        fn window_event(
+            &mut self,
+            target: &ActiveEventLoop,
+            _window_id: WindowId,
+            event: WindowEvent,
+        ) {
+            let win = match self.window.as_ref() {
+                Some(w) => w,
+                None => return,
+            };
 
-    event_loop
-        .run(|event, target| {
-            match event {
-                Event::WindowEvent { event, .. } => {
-                    if let Ok(mut guard) = WGPU_STATE.lock() {
-                        if let Some(state) = guard.0.as_mut() {
-                            if let Some(egui_rend) = state.egui_renderer.as_mut() {
-                                egui_rend.handle_input(window.as_ref(), &event);
-                            }
-                        }
+            if let Ok(mut guard) = WGPU_STATE.lock() {
+                if let Some(state) = guard.0.as_mut() {
+                    if let Some(egui_rend) = state.egui_renderer.as_mut() {
+                        egui_rend.handle_input(win.as_ref(), &event);
                     }
-                    
-                    match event {
-                        WindowEvent::CloseRequested => target.exit(),
+                }
+            }
 
-                        WindowEvent::Resized(size) => {
-                            let width = size.width;
-                            let height = size.height;
+            match event {
+                WindowEvent::CloseRequested => target.exit(),
 
-                            if width > 0 && height > 0 {
-                                resize_internal(width, height);
-                                window.request_redraw();
-                            }
-                        }
+                WindowEvent::Resized(size) => {
+                    let width = size.width;
+                    let height = size.height;
 
-                        WindowEvent::RedrawRequested => {
-                            let now = std::time::Instant::now();
-                            let dt = now.duration_since(last_frame_time).as_secs_f32();
-                            last_frame_time = now;
-                            
-                            update_internal(dt);
-                            render_internal(Some(window.as_ref()));
-
-                            window.request_redraw();
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                        }
-
-                        _ => (),
+                    if width > 0 && height > 0 {
+                        resize_internal(width, height);
+                        win.request_redraw();
                     }
                 }
 
-                Event::AboutToWait => {
-                    window.request_redraw();
+                WindowEvent::RedrawRequested => {
+                    let now = std::time::Instant::now();
+                    let dt = now.duration_since(self.last_frame_time).as_secs_f32();
+                    self.last_frame_time = now;
+
+                    update_internal(dt);
+                    render_internal(Some(win.as_ref()));
+
+                    win.request_redraw();
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+
+                WindowEvent::CursorMoved { position, .. } => {
+                    on_pointer_event_internal(1, position.x as f32, position.y as f32, 0);
+                }
+
+                WindowEvent::MouseInput { state, button, .. } => {
+                    let et = if state == winit::event::ElementState::Pressed {
+                        0
+                    } else {
+                        2
+                    };
+                    let b = match button {
+                        winit::event::MouseButton::Left => 0,
+                        winit::event::MouseButton::Right => 1,
+                        winit::event::MouseButton::Middle => 2,
+                        _ => 0,
+                    };
+                    on_pointer_event_internal(et, -1.0, -1.0, b);
+                }
+
+                WindowEvent::KeyboardInput { event, .. } => {
+                    let et = if event.state == winit::event::ElementState::Pressed {
+                        0
+                    } else {
+                        1
+                    };
+                    if let winit::keyboard::PhysicalKey::Code(key_code) = event.physical_key {
+                        on_key_event_internal(et, key_code as i32);
+                    }
                 }
 
                 _ => (),
             }
-        })
-        .unwrap();
+        }
+
+        fn about_to_wait(&mut self, _target: &ActiveEventLoop) {
+            if let Some(win) = self.window.as_ref() {
+                win.request_redraw();
+            }
+        }
+    }
+
+    let event_loop = EventLoop::new().unwrap();
+    let mut app = App {
+        window: None,
+        last_frame_time: std::time::Instant::now(),
+    };
+    event_loop.run_app(&mut app).unwrap();
 }
+
+
 
 #[cfg(feature = "jni_support")]
 #[no_mangle]
@@ -2169,8 +2406,27 @@ pub extern "C" fn android_main(app: AndroidApp) {
             while iter.next(|event| {
                 match event {
                     InputEvent::MotionEvent(motion) => {
-                        if motion.action() == MotionAction::Up {
-                            log::info!("Touch up event");
+                        let action = motion.action();
+                        let et = match action {
+                            MotionAction::Down => 0,
+                            MotionAction::Move => 1,
+                            MotionAction::Up => 2,
+                            _ => -1,
+                        };
+                        if et != -1 {
+                            let pointer = motion.pointer_at_index(0);
+                            on_pointer_event_internal(et, pointer.x(), pointer.y(), 0);
+                        }
+                    }
+                    InputEvent::KeyEvent(key) => {
+                        let action = key.action();
+                        let et = match action {
+                            android_activity::input::KeyAction::Down => 0,
+                            android_activity::input::KeyAction::Up => 1,
+                            _ => -1,
+                        };
+                        if et != -1 {
+                            on_key_event_internal(et, u32::from(key.key_code()) as i32);
                         }
                     }
                     _ => {}

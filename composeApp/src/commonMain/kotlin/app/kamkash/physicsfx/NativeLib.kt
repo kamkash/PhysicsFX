@@ -6,4 +6,6 @@ expect object NativeLib {
     fun setTimeScale(scale: Float)
     fun setPaused(paused: Boolean)
     fun resetSimulation()
+    fun onPointerEvent(eventType: Int, x: Float, y: Float, button: Int)
+    fun onKeyEvent(eventType: Int, keyCode: Int)
 }

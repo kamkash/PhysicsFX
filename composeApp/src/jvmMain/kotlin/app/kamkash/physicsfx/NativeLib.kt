@@ -45,4 +45,6 @@ actual object NativeLib {
     external actual fun setTimeScale(scale: Float)
     external actual fun setPaused(paused: Boolean)
     external actual fun resetSimulation()
+    external actual fun onPointerEvent(eventType: Int, x: Float, y: Float, button: Int)
+    external actual fun onKeyEvent(eventType: Int, keyCode: Int)
 }

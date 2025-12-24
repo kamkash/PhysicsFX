@@ -27,4 +27,12 @@ actual object NativeLib {
     actual fun resetSimulation() {
         physics_core_reset_simulation()
     }
+
+    actual fun onPointerEvent(eventType: Int, x: Float, y: Float, button: Int) {
+        physics_core_on_pointer_event(eventType, x, y, button)
+    }
+
+    actual fun onKeyEvent(eventType: Int, keyCode: Int) {
+        physics_core_on_key_event(eventType, keyCode)
+    }
 }

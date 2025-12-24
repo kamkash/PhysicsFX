@@ -32,6 +32,59 @@ actual fun WgpuNativeView(modifier: Modifier) {
         document.documentElement?.appendChild(canvas)
         println("DEBUG: Appended canvas $canvasId to documentElement")
 
+        // Mouse Events
+        canvas.addEventListener(
+                "mousedown",
+                { event ->
+                    val mouseEvent = event as org.w3c.dom.events.MouseEvent
+                    NativeLib.onPointerEvent(
+                            0,
+                            mouseEvent.offsetX.toFloat(),
+                            mouseEvent.offsetY.toFloat(),
+                            mouseEvent.button.toInt()
+                    )
+                }
+        )
+        canvas.addEventListener(
+                "mousemove",
+                { event ->
+                    val mouseEvent = event as org.w3c.dom.events.MouseEvent
+                    NativeLib.onPointerEvent(
+                            1,
+                            mouseEvent.offsetX.toFloat(),
+                            mouseEvent.offsetY.toFloat(),
+                            mouseEvent.button.toInt()
+                    )
+                }
+        )
+        canvas.addEventListener(
+                "mouseup",
+                { event ->
+                    val mouseEvent = event as org.w3c.dom.events.MouseEvent
+                    NativeLib.onPointerEvent(
+                            2,
+                            mouseEvent.offsetX.toFloat(),
+                            mouseEvent.offsetY.toFloat(),
+                            mouseEvent.button.toInt()
+                    )
+                }
+        )
+        // Keyboard Events
+        document.addEventListener(
+                "keydown",
+                { event ->
+                    val keyEvent = event as org.w3c.dom.events.KeyboardEvent
+                    NativeLib.onKeyEvent(0, keyEvent.keyCode)
+                }
+        )
+        document.addEventListener(
+                "keyup",
+                { event ->
+                    val keyEvent = event as org.w3c.dom.events.KeyboardEvent
+                    NativeLib.onKeyEvent(1, keyEvent.keyCode)
+                }
+        )
+
         onDispose {
             println("DEBUG: Removing canvas $canvasId")
             document.documentElement?.removeChild(canvas)
