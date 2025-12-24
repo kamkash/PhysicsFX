@@ -13,14 +13,14 @@ var<storage, read_write> instances: array<Instance>;
 @compute @workgroup_size(64)
 fn update_instances(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
-    if (index >= arrayLength(&instances)) {
+    if index >= arrayLength(&instances) {
         return;
     }
 
     // Simple physics update: pos += vel * dt (assuming fixed dt usually, or passed via uniform)
     // For now, let's just make them move based on velocity.
     // To make it interesting without a uniform DT yet, we'll assume a small factor.
-    let dt = 0.016; 
+    let dt = 0.016;
     let instance = instances[index];
     
     // Update position
@@ -29,11 +29,11 @@ fn update_instances(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Bounce off walls (assuming -1.0 to 1.0 clip space range for simplicity in logic)
     // In a real app, this logic might be more complex or depend on world size.
     var new_vel = instance.velocity;
-    if (new_pos.x < -1.0 || new_pos.x > 1.0) {
+    if new_pos.x < -1.0 || new_pos.x > 1.0 {
         new_vel.x = -new_vel.x;
         new_pos.x = clamp(new_pos.x, -1.0, 1.0);
     }
-    if (new_pos.y < -1.0 || new_pos.y > 1.0) {
+    if new_pos.y < -1.0 || new_pos.y > 1.0 {
         new_vel.y = -new_vel.y;
         new_pos.y = clamp(new_pos.y, -1.0, 1.0);
     }

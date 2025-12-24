@@ -786,6 +786,17 @@ fn init_physics() {
     let right_collider = ColliderBuilder::cuboid(0.1, 2.0, 0.1).build();
     collider_set.insert_with_parent(right_collider, right_handle, &mut rigid_body_set);
     
+    // Capture current settings if already initialized
+    let (current_gravity, current_time_scale, current_paused) = if let Ok(guard) = PHYSICS_STATE.lock() {
+        if let Some(physics) = &guard.0 {
+            (physics.gravity, physics.time_scale, physics.paused)
+        } else {
+            (vector![0.0, -9.81, 0.0], 1.0, false)
+        }
+    } else {
+        (vector![0.0, -9.81, 0.0], 1.0, false)
+    };
+
     // Create physics state
     let physics_state = PhysicsState {
         world,
@@ -799,16 +810,16 @@ fn init_physics() {
         impulse_joint_set: ImpulseJointSet::new(),
         multibody_joint_set: MultibodyJointSet::new(),
         ccd_solver: CCDSolver::new(),
-        gravity: vector![0.0, -4.81, 0.0], // Gravity pointing down in Y (Standard Earth Gravity)
-        paused: false,
-        time_scale: 1.0,
+        gravity: current_gravity,
+        paused: current_paused,
+        time_scale: current_time_scale,
     };
     
     if let Ok(mut guard) = PHYSICS_STATE.lock() {
         guard.0 = Some(physics_state);
     }
     
-    log::info!("Physics initialized with {} dynamic bodies and 4 static walls", NUM_INSTANCES);
+    log::info!("Physics initialized with {} dynamic bodies and 4 static walls (Gravity Preserved: {:?})", NUM_INSTANCES, current_gravity);
 }
 
 fn resize_internal(width: u32, height: u32) {
@@ -986,22 +997,22 @@ fn render_internal(window: Option<&winit::window::Window>) {
                 label: Some("Render Encoder"),
             });
 
-            // --- Compute Encoder (disabled - physics now drives updates) ---
-            // {
-            //     let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            //         label: Some("Compute Encoder"),
-            //     });
-            //     {
-            //         let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            //             label: Some("Compute Pass"),
-            //             timestamp_writes: None,
-            //         });
-            //         compute_pass.set_pipeline(&state.compute_pipeline);
-            //         compute_pass.set_bind_group(0, &state.compute_bind_group, &[]);
-            //         compute_pass.dispatch_workgroups(2, 1, 1);
-            //     }
-            //     state.queue.submit(std::iter::once(encoder.finish()));
-            // }
+            // --- Compute Encoder  ---
+            {
+                let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Compute Encoder"),
+                });
+                {
+                    let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("Compute Pass"),
+                        timestamp_writes: None,
+                    });
+                    compute_pass.set_pipeline(&state.compute_pipeline);
+                    compute_pass.set_bind_group(0, &state.compute_bind_group, &[]);
+                    compute_pass.dispatch_workgroups(2, 1, 1);
+                }
+                state.queue.submit(std::iter::once(encoder.finish()));
+            }
 
 
             // --- Render Encoder ---
@@ -1016,7 +1027,7 @@ fn render_internal(window: Option<&winit::window::Window>) {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
                                     r: 1.0, 
                                     g: 1.0,
-                                    b: 1.0,
+                                    b: 225.0/255.0,
                                     a: 1.0,
                                 }),
                                 store: wgpu::StoreOp::Store,
@@ -1042,16 +1053,40 @@ fn render_internal(window: Option<&winit::window::Window>) {
 
                 let screen_descriptor = ScreenDescriptor {
                     size_in_pixels: [state.config.width, state.config.height],
-                    pixels_per_point: state.scale_factor,
+                    pixels_per_point: state.scale_factor * 1.5, // Scale up UI (1.5x)
                 };
 
                 state.egui_renderer.as_mut().map(|egui_rend| {
+                    let ctx = egui_rend.context();
+
+                    // Apply light theme with yellow background and black text
+                    let mut visuals = egui::Visuals::light();
+                    visuals.window_fill = egui::Color32::from_rgb(255, 255, 224); // Light Yellow
+                    visuals.override_text_color = Some(egui::Color32::BLACK);
+                    ctx.set_visuals(visuals);
+
+                    // Make text bold for extra "darkness" and clarity
+                    let mut style: egui::Style = (*ctx.style()).clone();
+                    style.text_styles.insert(
+                        egui::TextStyle::Heading,
+                        egui::FontId::new(20.0, egui::FontFamily::Proportional),
+                    );
+                    style.text_styles.insert(
+                        egui::TextStyle::Body,
+                        egui::FontId::new(14.0, egui::FontFamily::Proportional),
+                    );
+                    // Note: egui doesn't have a "bold" weight constant in FontId easily, 
+                    // but we can increase the font size or use custom fonts.
+                    // Actually, most egui versions support a weight if compiled with that feature, 
+                    // but we'll stick to clear font sizes and standard proportionality.
+                    // Wait, I can try to set the stroke width if needed, but bold fonts are better.
+                    ctx.set_style(style);
 
                     egui_rend.begin_frame(window.unwrap());
 
                     egui::Window::new("Physics Controls")
                         .resizable(true)
-                        .default_width(300.0)
+                        .default_width(450.0)
                         .show(egui_rend.context(), |ui| {
                             ui.vertical_centered(|ui| {
                                 ui.heading("Physics Controls");
@@ -2052,8 +2087,6 @@ pub fn start_winit_app() {
     }
 
     event_loop
-
-
         .run(|event, target| {
             match event {
                 Event::WindowEvent { event, .. } => {
