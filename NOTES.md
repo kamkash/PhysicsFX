@@ -1,7 +1,3 @@
-Absolutely, Kamran — your Kotlin Multiplatform project structure is a great example of how to organize shared and platform-specific code across mobile, desktop, and web. Let’s break it down by folder purpose and target:
-
----
-
 ## 🧱 High-Level Folder Breakdown
 
 ### 🔁 Shared Code

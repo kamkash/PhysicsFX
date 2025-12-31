@@ -218,7 +218,7 @@ xcrun devicectl device process launch --device 00008103-001A309022DA001E app.kam
 
 # Your app is at
 
-/Users/kamran/Library/Developer/Xcode/DerivedData/iosApp-dpvwhunoybihgofxznciyxordpcx/Build/Products/Debug-iphoneos/PhysicsFX.app
+$HOME/Library/Developer/Xcode/DerivedData/iosApp-dpvwhunoybihgofxznciyxordpcx/Build/Products/Debug-iphoneos/PhysicsFX.app
 
 # Install
 
@@ -242,7 +242,7 @@ xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphoneos \
 
 ```bash
 RUST_LOG=debug ./gradlew :composeApp:run
-export PATH="$PATH:/Users/kamran/Library/Android/sdk/platform-tools"
+export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 ./gradlew :composeApp:assembleDebug
 adb devices -l
 adb install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
