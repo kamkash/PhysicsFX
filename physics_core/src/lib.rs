@@ -1170,11 +1170,6 @@ fn render_internal(window: Option<&winit::window::Window>) {
                         egui::TextStyle::Body,
                         egui::FontId::new(14.0, egui::FontFamily::Proportional),
                     );
-                    // Note: egui doesn't have a "bold" weight constant in FontId easily, 
-                    // but we can increase the font size or use custom fonts.
-                    // Actually, most egui versions support a weight if compiled with that feature, 
-                    // but we'll stick to clear font sizes and standard proportionality.
-                    // Wait, I can try to set the stroke width if needed, but bold fonts are better.
                     ctx.set_style(style);
 
                     egui_rend.begin_frame(window.unwrap());
