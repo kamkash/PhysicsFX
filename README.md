@@ -1,9 +1,11 @@
-This is a Kotlin Multiplatform template game project targeting Android, iOS, Web (WASM), and Desktop.
+This is a Kotlin Multiplatform game project targeting Android, iOS, Web (WASM), and Desktop.
+The project is meant to serve as a template for game development using Kotlin Multiplatform and Rust.
+
 * The frontend is written in Kotlin Compose Multiplatform.
 * The backend game engine is written in Rust WebGPU (Rust wgpu crate) for game loop and rendering.
 * Rapier physics engine (Rust) to handle physics.
 * BEVY-ECS (Rust) to handle game entities and components.
-* Kotlin interface with Rust through JNI for Android and JVM desktop, WASM-bindgen for WASM, and cinterop for iOS.
+* Kotlin interfaces with Rust through JNI for Android and JVM desktop, WASM-bindgen for WASM, and cinterop for iOS.
 * [/composeApp](./composeApp/src) is for code that will be shared across Compose Multiplatform applications.
   It contains several subfolders:
   * [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
@@ -12,7 +14,7 @@ This is a Kotlin Multiplatform template game project targeting Android, iOS, Web
     the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
     Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
     folder is the appropriate location.
-
+* [/physics_core](./physics_core) is for the Rust code that will be compiled for only the platform indicated in the folder name.
 * [/iosApp](./iosApp/iosApp) contains iOS applications. Even if you’re sharing your UI with Compose Multiplatform,
   you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
 
@@ -184,14 +186,9 @@ xcrun devicectl device process launch --device 00008103-001A309022DA001E app.kam
 xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphoneos \
   -destination 'platform=iOS,name=iPad' -derivedDataPath ./build build
 
-######################################################
-
-# Android APK
-
-# Android sdk
+# Android APK / Android sdk
 
 ```bash
-RUST_LOG=debug ./gradlew :composeApp:run
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 ./gradlew :composeApp:assembleDebug
 adb devices -l
@@ -208,6 +205,5 @@ adb logcat -s PhysicsFX:D
 
 adb kill-server
 adb start-server
-adb devices
 
 ```
