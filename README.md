@@ -1,6 +1,10 @@
-This is a Kotlin Multiplatform project targeting Android, iOS, Web, Desktop (JVM).
-
-* [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.
+This is a Kotlin Multiplatform template game project targeting Android, iOS, Web (WASM), and Desktop.
+* The frontend is written in Kotlin Compose Multiplatform.
+* The backend game engine is written in Rust WebGPU (Rust wgpu crate) for game loop and rendering.
+* Rapier physics engine (Rust) to handle physics.
+* BEVY-ECS (Rust) to handle game entities and components.
+* Kotlin interface with Rust through JNI for Android and JVM desktop, WASM-bindgen for WASM, and cinterop for iOS.
+* [/composeApp](./composeApp/src) is for code that will be shared across Compose Multiplatform applications.
   It contains several subfolders:
   * [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
   * Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
@@ -75,66 +79,12 @@ in your IDE's toolbar or run it directly from the terminal:
     .\gradlew.bat :composeApp:jsBrowserDevelopmentRun
     ```
 
-### xcode configuration
-The short answer is **no**. Unlike editors like VS Code or JetBrains IDEs, Xcode does not have a built-in UI setting to change the cursor's blink rate, thickness, or style (e.g., switching from a bar to a block).
-
-However, because Xcode is a native macOS application, it respects system-wide defaults. You can actually modify the cursor behavior using the **Terminal**.
-
----
-
-### How to Change the Blink Rate
-
-If you find the blinking distracting or too slow, you can adjust the intervals (measured in milliseconds) via the command line.
-
-1. **To stop the cursor from blinking (Solid Cursor):**
-Open Terminal and run:
-`defaults write -g AppleCursorBlinkPeriod -float 0`
-*(You will need to restart Xcode for this to take effect).*
-2. **To set a custom blink speed:**
-The default is usually around 1000ms. To make it faster (e.g., 500ms):
-`defaults write -g AppleCursorBlinkPeriod -float 500`
-3. **To reset to default:**
-`defaults delete -g AppleCursorBlinkPeriod`
-
-### Other "Cursor" Customizations in Xcode
-
-While you can't change the blink via settings, you can change how the cursor **behaves** and **looks** in other ways:
-
-* **Line Highlighting:** Go to `Settings` > `Text Editing` > `Display` and check **"Highlight current line"**. This makes it much easier to find your cursor in a sea of code.
-* **Insertion Point Color:** You can change the color of the cursor by going to `Settings` > `Themes`. Select your active theme and click on the **"Cursor"** color swatch to change it from the default blue to something higher contrast.
-* **Vim Mode:** If you enable Vim mode (`Editor` > `Vim Mode`), the cursor will change to a **block** when in Normal mode and a **bar** when in Insert mode.
-
----
-
-### Comparison with Other Editors
-
-If you are coming from another IDE, here is how Xcode differs:
-
-| Feature | Xcode | VS Code / IntelliJ |
-| --- | --- | --- |
-| **Blink Rate UI** | No | Yes |
-| **Cursor Style (Block/Underline)** | No (unless in Vim mode) | Yes |
-| **Multi-Cursor Support** | Yes (`Option` + Click) | Yes |
-| **Smooth Caret Animation** | No | Yes |
-
-Would you like the terminal commands to change the cursor thickness or help setting up a high-contrast theme to make the cursor more visible?
-
-
 ### Build and Run iOS Application
 
 To build and run the development version of the iOS app, use the run configuration from the run widget
 in your IDE’s toolbar or open the [/iosApp](./iosApp) directory in Xcode and run it from there.
 
----
-
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html),
-[Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform/#compose-multiplatform),
-[Kotlin/Wasm](https://kotl.in/wasm/)…
-
-We would appreciate your feedback on Compose/Web and Kotlin/Wasm in the public Slack channel [#compose-web](https://slack-chats.kotlinlang.org/c/compose-web).
-If you face any issues, please report them on [YouTrack](https://youtrack.jetbrains.com/newIssue?project=CMP).
-
-# Build for iOS Simulator (arm64)
+### Build for iOS Simulator (arm64)
 
 ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
 
@@ -247,7 +197,6 @@ export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 adb devices -l
 adb install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
 adb -s <deviceId> install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
-adb -s HNY09H0M install ./composeApp/build/outputs/apk/debug/composeApp-debug.apk
 adb uninstall app.kamkash.physicsfx
 adb shell am start -n app.kamkash.physicsfx/.MainActivity
 adb shell am stop-app app.kamkash.physicsfx
