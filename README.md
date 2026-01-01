@@ -225,5 +225,4 @@ adb start-server
 ```
 
 # desktop app
-![alt text](./2025-12-31 17.56.40.gif)
- 
+![desktopApp](./2025-12-31-17.56.40.gif) 
