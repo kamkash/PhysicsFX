@@ -1,3 +1,4 @@
+# PhysicsFX
 This is a Kotlin Multiplatform game project targeting Android, iOS, Web (WASM), and Desktop.
 The project is meant to serve as a template for game development using Kotlin Multiplatform and Rust.
 
@@ -223,6 +224,28 @@ adb kill-server
 adb start-server
 
 ```
+# Android Emulator
+```bash
+~/Library/Android/sdk/emulator/emulator -list-avds
+~/Library/Android/sdk/emulator/emulator -avd <avd_name>
+~/Library/Android/sdk/emulator/emulator -avd <avd_name> -netdelay none -netspeed full -no-snapshot-load
 
-# desktop app
-![desktopApp](./2025-12-31-17.56.40.gif) 
+ll ~/.android/avd/
+
+# ~/.android/avd/<AVD_NAME>.avd/
+
+cd ~/.android/avd/<AVD_NAME>.avd
+rm -f cache.img
+rm -f *.lock
+
+# remove snapshots (optional)
+rm -rf snapshots
+
+sdkmanager --list | grep system-images
+```
+
+
+# Android App
+![Desktop App](./2026-01-01-09.41.02.gif)
+# Desktop App
+![Android App](./2026-01-01-10.14.43.gif)
