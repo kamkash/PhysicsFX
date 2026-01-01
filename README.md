@@ -55,16 +55,16 @@ in your IDE’s toolbar or run it directly from the terminal:
 
 To build and run the development version of the web app, use the run configuration from the run widget
 in your IDE's toolbar or run it directly from the terminal:
-* for the Wasm target (faster, modern browsers):
+- for the Wasm target (faster, modern browsers):
   * on macOS/Linux
 
-    ```shell
+    ```bash
     ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
     ```
 
   * on Windows
 
-    ```shell
+    ```bash
     .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
     ```
 
@@ -87,12 +87,14 @@ To build and run the development version of the iOS app, use the run configurati
 in your IDE’s toolbar or open the [/iosApp](./iosApp) directory in Xcode and run it from there.
 
 ### Build for iOS Simulator (arm64)
-
+```bash
 ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
+```
 
 # Build for real device
-
+```bash
 ./gradlew :composeApp:linkDebugFrameworkIosArm64
+```
 
 # The framework will be output to
 
@@ -107,87 +109,101 @@ open iosApp/iosApp.xcodeproj
 # Option 2: Use xcodebuild CLI
 
 # Build and run on simulator
-
+```bash
 cd iosApp
 xcodebuild -project iosApp.xcodeproj \
   -scheme iosApp \
   -sdk iphonesimulator \
   -destination 'platform=iOS Simulator,name=iPhone 15' \
   build
+```
 
 # Then launch with xcrun
-
+```bash
 xcrun simctl boot "iPhone 15"
 xcrun simctl install booted build/Debug-iphonesimulator/iosApp.app
 xcrun simctl launch booted app.kamkash.physicsfx
+```
 
 # Build for iPad simulator
-
+```bash
 cd iosApp
 xcodebuild -project iosApp.xcodeproj \
   -scheme iosApp \
   -sdk iphonesimulator \
   -destination 'platform=iOS Simulator,name=iPad Pro (11-inch) (3rd generation)' \
   build
+```
 
 # Launch on iPad simulator
-
+```bash
 xcrun simctl boot "iPad Pro (11-inch) (3rd generation)"
 xcrun simctl install booted build/Debug-iphonesimulator/iosApp.app
 xcrun simctl launch booted app.kamkash.physicsfx
-
-####################################################
+```
 
 # Build and run on your connected iPad
-
+```bash
 cd iosApp
 xcodebuild -project iosApp.xcodeproj \
   -scheme iosApp \
   -sdk iphoneos \
   -destination 'platform=iOS,name=iPad' \
   build
+```
 
 # Or use the device ID directly
-
+```bash
 xcodebuild -project iosApp.xcodeproj \
   -scheme iosApp \
   -sdk iphoneos \
   -destination 'platform=iOS,id=00008103-001A309022DA001E' \
   build
+```
 
 # Or use xcodebuild CLI
-
+```bash
 xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphoneos -destination 'platform=iOS,name=iPad' build
+```
 
 # Install the app (requires ios-deploy tool)
-
+```bash
 ios-deploy --bundle build/Debug-iphoneos/iosApp.app
+```
 
 # Or use Xcode's xcrun
-
+```bash
 xcrun devicectl device install app --device 00008103-001A309022DA001E build/Debug-iphoneos/iosApp.app
 xcrun devicectl device process launch --device 00008103-001A309022DA001E app.kamkash.physicsfx  
+```
 
 # Your app is at
-
+```bash
 $HOME/Library/Developer/Xcode/DerivedData/iosApp-dpvwhunoybihgofxznciyxordpcx/Build/Products/Debug-iphoneos/PhysicsFX.app
+```
 
 # Install
-
+```bash
 xcrun devicectl device install app --device 00008103-001A309022DA001E \
   ~/Library/Developer/Xcode/DerivedData/iosApp-dpvwhunoybihgofxznciyxordpcx/Build/Products/Debug-iphoneos/PhysicsFX.app
-
+```
 # Launch
-
+```bash
 xcrun devicectl device process launch --device 00008103-001A309022DA001E app.kamkash.physicsfx.PhysicsFX
+```
 
 # Or to build to a local folder, add -derivedDataPath ./build to xcodebuild
-
+```bash
 xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphoneos \
   -destination 'platform=iOS,name=iPad' -derivedDataPath ./build build
+```
 
-# Android APK / Android sdk
+# Android
+```bash
+./gradlew :composeApp:installDebug
+```
 
+# Android APK / SDK
 ```bash
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 ./gradlew :composeApp:assembleDebug
@@ -207,3 +223,7 @@ adb kill-server
 adb start-server
 
 ```
+
+# desktop app
+![alt text](./2025-12-31 17.56.40.gif)
+ 
