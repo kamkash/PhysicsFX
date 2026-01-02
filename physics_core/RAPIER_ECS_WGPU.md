@@ -1,7 +1,3 @@
-Got it — you’re running **Rapier3D** physics with **bevy_ecs** only (no full Bevy app), and you want to understand how Rapier’s rigid bodies live inside ECS archetypes and how to map them into GPU instance buffers for rendering/compute. Let’s break this down carefully.
-
----
-
 ## 🧩 How Rapier3D Stores Rigid Bodies in ECS
 
 Rapier itself manages physics state in its own **RigidBodySet** and **ColliderSet**. When integrated with Bevy ECS (via `bevy_rapier3d` or your own glue code):
@@ -438,5 +434,3 @@ fn render_frame(world: &World) {
 - **Alignment:** Ensure your `GpuInstance` matches WGSL struct alignment; add padding fields if needed.
 - **Compute-then-render:** If compute modifies instance transforms, run compute before render and avoid re-uploading from CPU in the same frame unless necessary.
 - **Culling:** Store per-instance visibility flags in the same buffer; the compute pass can write them, and the vertex shader can skip via indirect draws or a second phase.
-
-If you want, I can tailor this for your exact WGSL layouts and your chosen vertex format, including a minimal WGSL snippet for the instance struct and a compute kernel stub.

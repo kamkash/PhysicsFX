@@ -401,5 +401,3 @@ let camera_uniform = CameraUniform {
 };
 
 ```
-
-**Would you like to see how to implement a simple "Orbit Camera" script that lets you rotate around your Rapier physics simulation using mouse inputs?**

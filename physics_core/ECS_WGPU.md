@@ -1,7 +1,3 @@
-Excellent question — this is where ECS design meets GPU data orchestration. Let’s break it down step by step so you can see how **Bevy ECS archetypes (CPU-side)** map onto **wgpu buffers (GPU-side)** for rendering and compute.
-
----
-
 ## 🧩 Conceptual Workflow
 
 ### 1. **ECS Archetypes (CPU memory)**
@@ -563,5 +559,3 @@ fn render_frame(world: &World) {
 - **Alignment:** Ensure your `GpuInstance` matches WGSL struct alignment; add padding fields if needed.
 - **Compute-then-render:** If compute modifies instance transforms, run compute before render and avoid re-uploading from CPU in the same frame unless necessary.
 - **Culling:** Store per-instance visibility flags in the same buffer; the compute pass can write them, and the vertex shader can skip via indirect draws or a second phase.
-
-If you want, I can tailor this for your exact WGSL layouts and your chosen vertex format, including a minimal WGSL snippet for the instance struct and a compute kernel stub.

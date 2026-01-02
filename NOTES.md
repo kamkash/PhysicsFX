@@ -121,5 +121,3 @@ This structure lets you:
 - Cleanly separate platform-specific bindings while preserving shared logic.
 
 ---
-
-Would you like to extend this diagram with **module boundaries**, **package naming**, or **build tool integration** (e.g., Gradle + Cargo)? I can help you model the full build pipeline next.

@@ -1,7 +1,3 @@
-Perfect — let’s make this concrete with a **step‑by‑step pseudo‑code system** that shows how to build and upload a `GpuInstance` array from ECS queries each frame. This ties together the **CPU ECS archetypes** and the **GPU instance buffer**.
-
----
-
 ## 🧩 ECS → GPU Sync System (Pseudo‑Code)
 
 ```rust
@@ -89,7 +85,3 @@ E3: Position + Velocity
 - Migration between archetypes doesn’t break GPU alignment — the sync system rebuilds the buffer each frame.
 
 ---
-
-✅ This gives you a **repeatable workflow**: ECS is the source of truth, GPU buffers are refreshed each frame, and both compute + render pipelines consume the same instance data.
-
-Would you like me to **extend this into a full Bevy app skeleton** (with `App::build()`, pipeline setup, and system registration) so you can drop it directly into a project?

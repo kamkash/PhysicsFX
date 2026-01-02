@@ -15,7 +15,7 @@ The project is meant to serve as a template for game development using Kotlin Mu
     the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
     Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
     folder is the appropriate location.
-* [/physics_core](./physics_core) is for the Rust code that will be compiled for only the platform indicated in the folder name.
+* [/physics_core](./physics_core) is for the Rust code that will be compiled for the target platform.
 * [/iosApp](./iosApp/iosApp) contains iOS applications. Even if you’re sharing your UI with Compose Multiplatform,
   you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
 
