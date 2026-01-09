@@ -3,7 +3,8 @@ struct Instance {
     velocity: vec2<f32>,
     scale: f32,
     rotation: f32,
-    uv: vec2<f32>,
+    uv_offset: vec2<f32>,
+    uv_scale: vec2<f32>,
 };
 
 @group(0) @binding(0)
@@ -64,7 +65,8 @@ struct InstanceInput {
     @location(3) i_velocity: vec2<f32>, // Unused in VS, but part of buffer stride
     @location(4) i_scale: f32,
     @location(5) i_rotation: f32,
-    @location(6) i_uv: vec2<f32>, // UV offset/scale could go here, for now just passing through or ignoring
+    @location(6) i_uv_offset: vec2<f32>,
+    @location(7) i_uv_scale: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -97,7 +99,8 @@ fn vs_main(
     );
 
     var out: VertexOutput;
-    out.tex_coords = model.tex_coords; // + instance.i_uv if we wanted UV scrolling
+    // Calculate texture coordinates based on sprite sheet frame (offset and scale)
+    out.tex_coords = model.tex_coords * instance.i_uv_scale + instance.i_uv_offset;
     out.clip_position = camera.view_proj * vec4<f32>(world_pos, 1.0);
     return out;
 }

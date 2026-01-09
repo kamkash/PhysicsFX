@@ -85,6 +85,14 @@ struct PhysicsBody {
     collider_handle: ColliderHandle,
 }
 
+// --- Strategy Pattern Components for Animated Entities ---
+pub mod game_entity;
+pub use game_entity::{
+    AnimatorComponent, CircularMovement, GameEntity, HorizontalRandomMovement, LinearMovement,
+    MovementComponent, MovementStrategy, SinusoidalMovement, SpriteSheetComponent,
+};
+
+
 struct PhysicsState {
     world: World,
     rigid_body_set: RigidBodySet,
@@ -183,7 +191,8 @@ struct Instance {
     velocity: [f32; 2],
     scale: f32,
     rotation: f32,
-    uv: [f32; 2],
+    uv_offset: [f32; 2],
+    uv_scale: [f32; 2],
 }
 
 impl Instance {
@@ -216,10 +225,16 @@ impl Instance {
                     shader_location: 5,
                     format: wgpu::VertexFormat::Float32,
                 },
-                // uv
+                // uv_offset
                 wgpu::VertexAttribute {
                     offset: (std::mem::size_of::<[f32; 2]>() * 2 + std::mem::size_of::<f32>() * 2) as wgpu::BufferAddress,
                     shader_location: 6,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                // uv_scale
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 2]>() * 3 + std::mem::size_of::<f32>() * 2) as wgpu::BufferAddress,
+                    shader_location: 7,
                     format: wgpu::VertexFormat::Float32x2,
                 },
             ],
@@ -595,7 +610,8 @@ fn init_wgpu_internal(
                 velocity,
                 scale: 0.05,
                 rotation: 0.0,
-                uv: [0.0, 0.0],
+                uv_offset: [0.0, 0.0],
+                uv_scale: [1.0, 1.0],
             });
         }
     }
@@ -843,6 +859,9 @@ fn init_physics() {
                     rigid_body_handle: rb_handle,
                     collider_handle: coll_handle,
                 },
+                AnimatorComponent::default(),
+                // Demo sprite sheet: 4x4 grid, 16 frames, 0.1s duration, looping
+                SpriteSheetComponent::new(4, 4, 16, 0.1, true),
             ));
         }
     }
@@ -932,6 +951,15 @@ fn resize_internal(width: u32, height: u32) {
         }
     }
 }
+fn animation_system(world: &mut World, dt: f32) {
+    for (mut animator, sprite_sheet) in world.query::<(&mut AnimatorComponent, &SpriteSheetComponent)>().iter_mut(world) {
+        if animator.is_playing {
+            animator.elapsed_time += dt;
+            animator.current_frame = sprite_sheet.frame_for_time(animator.elapsed_time, animator.speed);
+        }
+    }
+}
+
 fn update_internal(_dt: f32) {
     // Step physics simulation
     if let Ok(mut guard) = PHYSICS_STATE.lock() {
@@ -942,6 +970,9 @@ fn update_internal(_dt: f32) {
 
             // Apply time scale to integration parameters
             physics.integration_parameters.dt = _dt * physics.time_scale;
+
+            // Update animations
+            animation_system(&mut physics.world, _dt * physics.time_scale);
 
             // Step the physics simulation
             physics.physics_pipeline.step(
@@ -995,17 +1026,26 @@ fn sync_physics_to_gpu() {
         };
         
         let mut instances = Vec::new();
-        for (_entity, physics_body) in physics.world.query::<(Entity, &PhysicsBody)>().iter(&physics.world) {
+        for (_entity, physics_body, animator, sprite_sheet) in physics.world.query::<(Entity, &PhysicsBody, Option<&AnimatorComponent>, Option<&SpriteSheetComponent>)>().iter(&physics.world) {
             if let Some(rb) = physics.rigid_body_set.get(physics_body.rigid_body_handle) {
                 let translation = rb.translation();
                 let rotation = rb.rotation().angle(); // Get rotation angle around Z axis
                 
+                // Calculate UVs based on animation state
+                let (uv_offset, uv_scale) = if let (Some(anim), Some(sheet)) = (animator, sprite_sheet) {
+                    let (u, v, w, h) = sheet.uv_for_frame(anim.current_frame);
+                    ([u, v], [w, h])
+                } else {
+                    ([0.0, 0.0], [1.0, 1.0])
+                };
+
                 instances.push(Instance {
                     position: [translation.x, translation.y],
                     velocity: [rb.linvel().x, rb.linvel().y],
                     scale: 0.05, // Fixed scale for now
                     rotation,
-                    uv: [0.0, 0.0],
+                    uv_offset,
+                    uv_scale,
                 });
             }
         }
