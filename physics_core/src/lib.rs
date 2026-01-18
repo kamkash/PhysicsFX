@@ -1,5 +1,10 @@
 mod egui_tools;
 mod camera;
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+pub mod animation;
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+pub mod sprite;
+pub mod three_d_sample;
 
 use camera::{Camera, CameraUniform};
 use ::nalgebra as na;
@@ -14,11 +19,12 @@ use std::os::raw::c_char;
 #[allow(unused_imports)]
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 
 // Bevy ECS imports
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemState;
 
 // Rapier3D imports
 use rapier3d::prelude::*;
@@ -298,8 +304,8 @@ struct EguiSettings {
 struct WgpuState {
     #[allow(dead_code)]
     instance: wgpu::Instance,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
@@ -329,6 +335,7 @@ struct WgpuState {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    three_d_sample: three_d_sample::ThreeDSample,
 }
 
 // Wrapper to force Send/Sync for WASM where we know it's single-threaded
@@ -521,6 +528,7 @@ fn init_wgpu_internal(
         };
 
     let surface_caps = surface.get_capabilities(&adapter);
+    let adapter_info = adapter.get_info();
 
     // Pick a conservative, widely supported format. Some Android devices report exotic
     // formats first that gralloc cannot actually allocate for small render targets,
@@ -791,6 +799,19 @@ fn init_wgpu_internal(
         None
     };
 
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+    
+    let three_d_sample = three_d_sample::ThreeDSample::new(
+        device.clone(),
+        queue.clone(),
+        adapter_info,
+        config.format,
+        config.width,
+        config.height,
+    );
+
+
     let state = WgpuState {
         instance,
         device,
@@ -823,6 +844,7 @@ fn init_wgpu_internal(
         camera_uniform,
         camera_buffer,
         camera_bind_group,
+        three_d_sample,
     };
 
     #[cfg(target_arch = "wasm32")]
@@ -890,8 +912,21 @@ fn init_physics() {
             // Make the first entity controllable
             if x == 0 && y == 0 {
                 entity_cmds.insert(Controllable);
+                // Add Bevy Animation/Sprite samples to the first entity for demo
+                #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+                {
+                    entity_cmds.insert(animation::AnimationSample::default());
+                    entity_cmds.insert(bevy_animation::prelude::AnimationPlayer::default());
+                    entity_cmds.insert(sprite::SpriteSample::default());
+                }
+                // We'd add a Sprite component here if we had a texture handle.
+                // entity_cmds.insert(bevy_sprite::prelude::Sprite::default()); 
             }
         }
+        
+    // Initialize GameTime resource
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+    world.insert_resource(sprite::GameTime(0.0));
     }
     
     // Create static wall boundaries (viewport edges: -1 to 1)
@@ -1050,6 +1085,18 @@ fn update_internal(_dt: f32) {
                     for event in guard.events.drain(..) {
                         event_queue.push(event);
                     }
+                    // Update GameTime resource for Bevy Sprite sample
+                    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+                    if let Some(mut time) = physics.world.get_resource_mut::<sprite::GameTime>() {
+                        time.0 += _dt; // Accumulate time or set dt? Sample used dt for spin, but usually one wants accumulated time for sin(t).
+                        // Actually sprite sample used dt * speed then sin(), wait.
+                        // "size.x = (dt * sample.rotate_speed).sin();" -> if dt is delta, this flickers.
+                        // I should pass elapsed time.
+                        // Let's assume GameTime holds elapsed time.
+                    } else {
+                         // Initialize if missing (should be in init but safe to do here)
+                         physics.world.insert_resource(sprite::GameTime(0.0));
+                    }
                 }
              }
         }
@@ -1065,8 +1112,24 @@ fn update_internal(_dt: f32) {
             // Apply time scale to integration parameters
             physics.integration_parameters.dt = _dt * physics.time_scale;
 
-            // Update animations
-            animation_system(&mut physics.world, _dt * physics.time_scale);
+
+        // Run Bevy Animation/Sprite sample systems
+        // Note: Constructing SystemState every frame is inefficient; ideally this should be cached.
+        #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+        {
+            let mut animation_system_state: SystemState<(
+                Query<(&mut bevy_animation::prelude::AnimationPlayer, &animation::AnimationSample)>,
+            )> = SystemState::new(&mut physics.world);
+            let (query,) = animation_system_state.get_mut(&mut physics.world); 
+            animation::animation_control_system(query);
+            
+            let mut sprite_system_state: SystemState<(
+                Query<(&mut bevy_sprite::prelude::Sprite, &sprite::SpriteSample)>,
+                Res<sprite::GameTime>,
+            )> = SystemState::new(&mut physics.world);
+            let (query, time) = sprite_system_state.get_mut(&mut physics.world);
+            sprite::sprite_spin_system(query, time);
+        }
             
             // Process Inputs
             input_system(&mut physics.world, &mut physics.rigid_body_set);
@@ -1958,6 +2021,7 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
             return false;
         }
     };
+    let adapter_info = adapter.get_info();
 
     log::info!("Device acquired. getting surface caps...");
 
@@ -2159,7 +2223,8 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
                 velocity,
                 scale: 0.05,
                 rotation: 0.0,
-                uv: [0.0, 0.0],
+                uv_offset: [0.0, 0.0],
+                uv_scale: [1.0, 1.0],
             });
         }
     }
@@ -2209,6 +2274,18 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         cache: None,
     });
 
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+
+    let three_d_sample = three_d_sample::ThreeDSample::new(
+        device.clone(),
+        queue.clone(),
+        adapter_info,
+        config.format,
+        config.width,
+        config.height,
+    );
+
     let state = WgpuState {
         instance,
         device,
@@ -2241,6 +2318,7 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         camera_uniform,
         camera_buffer,
         camera_bind_group,
+        three_d_sample,
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
