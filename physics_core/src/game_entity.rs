@@ -11,6 +11,10 @@ use bevy_ecs::prelude::*;
 #[derive(Component, Clone, Copy, Default)]
 pub struct GameEntity;
 
+/// Marker component for entities that can be controlled by player input
+#[derive(Component, Clone, Copy, Default)]
+pub struct Controllable;
+
 // --- Animation State Component ---
 
 /// Component tracking animation state

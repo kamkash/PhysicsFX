@@ -25,6 +25,9 @@ use rapier3d::prelude::*;
 
 use crate::egui_tools::EguiRenderer;
 
+pub mod events;
+use events::{EventQueue, GameEvent, InputEventType};
+
 #[allow(dead_code)]
 extern "C" {
     fn ANativeWindow_acquire(window: *mut c_void);
@@ -89,7 +92,7 @@ struct PhysicsBody {
 pub mod game_entity;
 pub use game_entity::{
     AnimatorComponent, CircularMovement, GameEntity, HorizontalRandomMovement, LinearMovement,
-    MovementComponent, MovementStrategy, SinusoidalMovement, SpriteSheetComponent,
+    MovementComponent, MovementStrategy, SinusoidalMovement, SpriteSheetComponent, Controllable,
 };
 
 
@@ -117,12 +120,13 @@ unsafe impl Sync for PhysicsStateWrapper {}
 
 static PHYSICS_STATE: Lazy<Mutex<PhysicsStateWrapper>> = Lazy::new(|| Mutex::new(PhysicsStateWrapper(None)));
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct InputEventState {
     pointer_x: f32,
     pointer_y: f32,
     pointer_down: bool,
     last_key: Option<i32>,
+    events: Vec<GameEvent>,
 }
 
 static INPUT_STATE: Lazy<Mutex<InputEventState>> = Lazy::new(|| Mutex::new(InputEventState {
@@ -130,6 +134,7 @@ static INPUT_STATE: Lazy<Mutex<InputEventState>> = Lazy::new(|| Mutex::new(Input
     pointer_y: 0.0,
     pointer_down: false,
     last_key: None,
+    events: Vec::new(),
 }));
 
 fn on_pointer_event_internal(event_type: i32, x: f32, y: f32, _button: i32) {
@@ -138,11 +143,23 @@ fn on_pointer_event_internal(event_type: i32, x: f32, y: f32, _button: i32) {
         if x >= 0.0 { guard.pointer_x = x; }
         if y >= 0.0 { guard.pointer_y = y; }
         
-        match event_type {
-            0 => guard.pointer_down = true,
-            2 => guard.pointer_down = false,
-            _ => {}
+        let event_enum = match event_type {
+            0 => {
+                guard.pointer_down = true;
+                Some(InputEventType::PointerDown)
+            },
+            1 => Some(InputEventType::PointerMove),
+            2 => { 
+                guard.pointer_down = false;
+                Some(InputEventType::PointerUp)
+            },
+            _ => None,
+        };
+        
+        if let Some(et) = event_enum {
+             guard.events.push(GameEvent::new_pointer(et, x, y));
         }
+
         log::debug!("Pointer event: type={}, x={}, y={}", event_type, x, y);
     }
 }
@@ -151,6 +168,9 @@ fn on_key_event_internal(event_type: i32, key_code: i32) {
     if let Ok(mut guard) = INPUT_STATE.lock() {
         if event_type == 0 {
             guard.last_key = Some(key_code);
+            guard.events.push(GameEvent::new_key(InputEventType::KeyDown, key_code));
+        } else if event_type == 1 {
+             guard.events.push(GameEvent::new_key(InputEventType::KeyUp, key_code));
         }
         log::debug!("Key event: type={}, code={}", event_type, key_code);
     }
@@ -827,6 +847,9 @@ fn init_physics() {
     let mut rigid_body_set = RigidBodySet::new();
     let mut collider_set = ColliderSet::new();
     
+    // Register EventQueue resource
+    world.insert_resource(EventQueue::default());
+    
     // Grid configuration (must match instance creation)
     const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
     
@@ -850,7 +873,7 @@ fn init_physics() {
             let coll_handle = collider_set.insert_with_parent(collider, rb_handle, &mut rigid_body_set);
             
             // Spawn ECS entity with components
-            world.spawn((
+            let mut entity_cmds = world.spawn((
                 Position2D { x: pos_x, y: pos_y },
                 Velocity2D { x: 0.0, y: 0.0 },
                 Scale(0.05),
@@ -863,6 +886,11 @@ fn init_physics() {
                 // Demo sprite sheet: 4x4 grid, 16 frames, 0.1s duration, looping
                 SpriteSheetComponent::new(4, 4, 16, 0.1, true),
             ));
+
+            // Make the first entity controllable
+            if x == 0 && y == 0 {
+                entity_cmds.insert(Controllable);
+            }
         }
     }
     
@@ -960,7 +988,73 @@ fn animation_system(world: &mut World, dt: f32) {
     }
 }
 
+fn input_system(world: &mut World, rigid_body_set: &mut RigidBodySet) {
+    let mut impulses = Vec::new();
+
+    // scope to read events
+    {
+        let events = world.resource::<EventQueue>();
+        for event in &events.events {
+            // Log for debugging
+            // log::info!("Processing Event: {:?}", event);
+            
+            if let InputEventType::KeyDown = event.event_type {
+                if let Some(code) = event.key_code {
+                    // Simple mapping demo: 
+                    // 19 (DPAD_UP/W), 20 (DPAD_DOWN/S), 21 (DPAD_LEFT/A), 22 (DPAD_RIGHT/D)
+                    // Just applying random impulse for any key for demo if code unknown
+                    let x = match code {
+                        21 => -0.5, // Left
+                        22 => 0.5,  // Right
+                        _ => 0.0,
+                    };
+                    let y = match code {
+                        19 => 0.5,  // Up
+                        20 => -0.5, // Down
+                        _ => 0.0,
+                    };
+                    
+                    if x != 0.0 || y != 0.0 {
+                        impulses.push(vector![x, y, 0.0]);
+                    } else {
+                        // Default demo impulse for other keys (Jump)
+                        // impulses.push(vector![0.0, 5.0, 0.0]);
+                    }
+                }
+            } else if let InputEventType::PointerDown = event.event_type {
+                 // Mouse click / Touch -> Jump
+                 impulses.push(vector![0.0, 5.0, 0.0]);
+            }
+        }
+    }
+    
+    // Apply to controllable entities
+    for impulse in impulses {
+        for (_entity, physics_body, _control) in world.query::<(Entity, &PhysicsBody, &Controllable)>().iter(world) {
+            if let Some(rb) = rigid_body_set.get_mut(physics_body.rigid_body_handle) {
+                rb.apply_impulse(impulse, true);
+                log::info!("Applied impulse {:?} to Controllable Entity", impulse);
+            }
+        }
+    }
+}
+
 fn update_internal(_dt: f32) {
+    // Flush input events to ECS EventQueue
+    if let Ok(mut guard) = INPUT_STATE.lock() {
+        if !guard.events.is_empty() {
+            // We need to access the world to get the EventQueue resource
+             if let Ok(mut physics_guard) = PHYSICS_STATE.lock() {
+                if let Some(physics) = physics_guard.0.as_mut() {
+                    let mut event_queue = physics.world.resource_mut::<EventQueue>();
+                    for event in guard.events.drain(..) {
+                        event_queue.push(event);
+                    }
+                }
+             }
+        }
+    }
+
     // Step physics simulation
     if let Ok(mut guard) = PHYSICS_STATE.lock() {
         if let Some(physics) = guard.0.as_mut() {
@@ -973,6 +1067,14 @@ fn update_internal(_dt: f32) {
 
             // Update animations
             animation_system(&mut physics.world, _dt * physics.time_scale);
+            
+            // Process Inputs
+            input_system(&mut physics.world, &mut physics.rigid_body_set);
+            
+            // Clear processed events
+            if let Some(mut events) = physics.world.get_resource_mut::<EventQueue>() {
+                events.clear();
+            }
 
             // Step the physics simulation
             physics.physics_pipeline.step(
@@ -2275,7 +2377,7 @@ pub fn start_winit_app() {
                     target
                         .create_window(
                             WindowAttributes::default()
-                                .with_title("PhysicsFX (Rust Winit)")
+                                .with_title("BombzBlast! (Rust Winit)")
                                 .with_inner_size(winit::dpi::LogicalSize::new(WIDTH, HEIGHT)),
                         )
                         .unwrap(),
@@ -2619,4 +2721,3 @@ pub extern "C" fn android_main(app: AndroidApp) {
         }
     }
 }
-
