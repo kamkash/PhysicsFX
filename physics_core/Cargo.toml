@@ -41,8 +41,7 @@ wasm_support = ["dep:wasm-bindgen"]
 [target."cfg(not(any(target_arch = \"wasm32\", target_os = \"android\")))".dependencies]
 winit = {version="0.30"}
 flexi_logger = {version="0.27"}
-bevy_animation = { version = "0.14", default-features = false }
-bevy_sprite = { version = "0.14", default-features = false }
+
 
 
 [target."cfg(target_os = \"android\")".dependencies]

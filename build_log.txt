@@ -1,44 +1,605 @@
 Type-safe project accessors is an incubating feature.
 
-> Task :composeApp:buildRustWasm FAILED
-[INFO]: 🎯  Checking for the Wasm target...
-[INFO]: 🌀  Compiling to Wasm...
+> Task :composeApp:buildRustAndroid
+cargo-ndk 4.1.2
+    Building armeabi-v7a (armv7-linux-androideabi)
    Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
-error[E0425]: cannot find value `adapter_info` in this scope
-    --> src/lib.rs:2282:9
-     |
-2282 |         adapter_info,
-     |         ^^^^^^^^^^^^ not found in this scope
-
 warning: unused import: `bevy_ecs::system::SystemState`
-  --> src/lib.rs:27:5
+  --> src/lib.rs:24:5
    |
-27 | use bevy_ecs::system::SystemState;
+24 | use bevy_ecs::system::SystemState;
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: `#[warn(unused_imports)]` on by default
 
-For more information about this error, try `rustc --explain E0425`.
-warning: `physics_core` (lib) generated 1 warning
-error: could not compile `physics_core` (lib) due to 1 previous error; 1 warning emitted
-Error: Compiling your crate to WebAssembly failed
-Caused by: Compiling your crate to WebAssembly failed
-Caused by: failed to execute `cargo build`: exited with exit status: 101
-  full command: cd "/Users/kamran/PhysicsFX/physics_core" && "cargo" "build" "--lib" "--release" "--target" "wasm32-unknown-unknown" "--features" "wasm_support"
+warning: variable does not need to be mutable
+    --> src/lib.rs:2662:29
+     |
+2662 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: static `WIDTH` is never used
+  --> src/lib.rs:65:8
+   |
+65 | static WIDTH: u32 = 1024;
+   |        ^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: static `HEIGHT` is never used
+  --> src/lib.rs:66:8
+   |
+66 | static HEIGHT: u32 = 1024;
+   |        ^^^^^^
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:72:5
+   |
+71 | struct Position2D {
+   |        ---------- fields in this struct
+72 |     x: f32,
+   |     ^
+73 |     y: f32,
+   |     ^
+   |
+   = note: `Position2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:78:5
+   |
+77 | struct Velocity2D {
+   |        ---------- fields in this struct
+78 |     x: f32,
+   |     ^
+79 |     y: f32,
+   |     ^
+   |
+   = note: `Velocity2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:83:14
+   |
+83 | struct Scale(f32);
+   |        ----- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Scale` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:86:17
+   |
+86 | struct Rotation(f32);
+   |        -------- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Rotation` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `collider_handle` is never read
+  --> src/lib.rs:91:5
+   |
+89 | struct PhysicsBody {
+   |        ----------- field in this struct
+90 |     rigid_body_handle: RigidBodyHandle,
+91 |     collider_handle: ColliderHandle,
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `PhysicsBody` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: struct `EguiSettings` is never constructed
+   --> src/lib.rs:294:8
+    |
+294 | struct EguiSettings {
+    |        ^^^^^^^^^^^^
+
+warning: fields `camera`, `camera_uniform`, `camera_buffer`, and `three_d_sample` are never read
+   --> src/lib.rs:331:5
+    |
+301 | struct WgpuState {
+    |        --------- fields in this struct
+...
+331 |     camera: Camera,
+    |     ^^^^^^
+332 |     camera_uniform: CameraUniform,
+    |     ^^^^^^^^^^^^^^
+333 |     camera_buffer: wgpu::Buffer,
+    |     ^^^^^^^^^^^^^
+334 |     camera_bind_group: wgpu::BindGroup,
+335 |     three_d_sample: three_d_sample::ThreeDSample,
+    |     ^^^^^^^^^^^^^^
+
+warning: function `animation_system` is never used
+    --> src/lib.rs:1005:4
+     |
+1005 | fn animation_system(world: &mut World, dt: f32) {
+     |    ^^^^^^^^^^^^^^^^
+
+warning: method `handle_input` is never used
+  --> src/egui_tools.rs:53:12
+   |
+14 | impl EguiRenderer {
+   | ----------------- method in this implementation
+...
+53 |     pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) {
+   |            ^^^^^^^^^^^^
+
+warning: field `lights` is never read
+ --> src/three_d_sample.rs:8:5
+  |
+4 | pub struct ThreeDSample {
+  |            ------------ field in this struct
+...
+8 |     lights: Vec<Box<dyn Light>>,
+  |     ^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:2571:37
+     |
+2571 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 15 warnings (run `cargo fix --lib -p physics_core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1.17s
+    Building arm64-v8a (aarch64-linux-android)
+   Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
+warning: unused import: `bevy_ecs::system::SystemState`
+  --> src/lib.rs:24:5
+   |
+24 | use bevy_ecs::system::SystemState;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+    --> src/lib.rs:2662:29
+     |
+2662 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: static `WIDTH` is never used
+  --> src/lib.rs:65:8
+   |
+65 | static WIDTH: u32 = 1024;
+   |        ^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: static `HEIGHT` is never used
+  --> src/lib.rs:66:8
+   |
+66 | static HEIGHT: u32 = 1024;
+   |        ^^^^^^
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:72:5
+   |
+71 | struct Position2D {
+   |        ---------- fields in this struct
+72 |     x: f32,
+   |     ^
+73 |     y: f32,
+   |     ^
+   |
+   = note: `Position2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:78:5
+   |
+77 | struct Velocity2D {
+   |        ---------- fields in this struct
+78 |     x: f32,
+   |     ^
+79 |     y: f32,
+   |     ^
+   |
+   = note: `Velocity2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:83:14
+   |
+83 | struct Scale(f32);
+   |        ----- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Scale` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:86:17
+   |
+86 | struct Rotation(f32);
+   |        -------- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Rotation` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `collider_handle` is never read
+  --> src/lib.rs:91:5
+   |
+89 | struct PhysicsBody {
+   |        ----------- field in this struct
+90 |     rigid_body_handle: RigidBodyHandle,
+91 |     collider_handle: ColliderHandle,
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `PhysicsBody` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: struct `EguiSettings` is never constructed
+   --> src/lib.rs:294:8
+    |
+294 | struct EguiSettings {
+    |        ^^^^^^^^^^^^
+
+warning: fields `camera`, `camera_uniform`, `camera_buffer`, and `three_d_sample` are never read
+   --> src/lib.rs:331:5
+    |
+301 | struct WgpuState {
+    |        --------- fields in this struct
+...
+331 |     camera: Camera,
+    |     ^^^^^^
+332 |     camera_uniform: CameraUniform,
+    |     ^^^^^^^^^^^^^^
+333 |     camera_buffer: wgpu::Buffer,
+    |     ^^^^^^^^^^^^^
+334 |     camera_bind_group: wgpu::BindGroup,
+335 |     three_d_sample: three_d_sample::ThreeDSample,
+    |     ^^^^^^^^^^^^^^
+
+warning: function `animation_system` is never used
+    --> src/lib.rs:1005:4
+     |
+1005 | fn animation_system(world: &mut World, dt: f32) {
+     |    ^^^^^^^^^^^^^^^^
+
+warning: method `handle_input` is never used
+  --> src/egui_tools.rs:53:12
+   |
+14 | impl EguiRenderer {
+   | ----------------- method in this implementation
+...
+53 |     pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) {
+   |            ^^^^^^^^^^^^
+
+warning: field `lights` is never read
+ --> src/three_d_sample.rs:8:5
+  |
+4 | pub struct ThreeDSample {
+  |            ------------ field in this struct
+...
+8 |     lights: Vec<Box<dyn Light>>,
+  |     ^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:2571:37
+     |
+2571 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 15 warnings (run `cargo fix --lib -p physics_core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1.18s
+    Building x86 (i686-linux-android)
+   Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
+warning: unused import: `bevy_ecs::system::SystemState`
+  --> src/lib.rs:24:5
+   |
+24 | use bevy_ecs::system::SystemState;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+    --> src/lib.rs:2662:29
+     |
+2662 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: static `WIDTH` is never used
+  --> src/lib.rs:65:8
+   |
+65 | static WIDTH: u32 = 1024;
+   |        ^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: static `HEIGHT` is never used
+  --> src/lib.rs:66:8
+   |
+66 | static HEIGHT: u32 = 1024;
+   |        ^^^^^^
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:72:5
+   |
+71 | struct Position2D {
+   |        ---------- fields in this struct
+72 |     x: f32,
+   |     ^
+73 |     y: f32,
+   |     ^
+   |
+   = note: `Position2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:78:5
+   |
+77 | struct Velocity2D {
+   |        ---------- fields in this struct
+78 |     x: f32,
+   |     ^
+79 |     y: f32,
+   |     ^
+   |
+   = note: `Velocity2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:83:14
+   |
+83 | struct Scale(f32);
+   |        ----- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Scale` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:86:17
+   |
+86 | struct Rotation(f32);
+   |        -------- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Rotation` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `collider_handle` is never read
+  --> src/lib.rs:91:5
+   |
+89 | struct PhysicsBody {
+   |        ----------- field in this struct
+90 |     rigid_body_handle: RigidBodyHandle,
+91 |     collider_handle: ColliderHandle,
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `PhysicsBody` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: struct `EguiSettings` is never constructed
+   --> src/lib.rs:294:8
+    |
+294 | struct EguiSettings {
+    |        ^^^^^^^^^^^^
+
+warning: fields `camera`, `camera_uniform`, `camera_buffer`, and `three_d_sample` are never read
+   --> src/lib.rs:331:5
+    |
+301 | struct WgpuState {
+    |        --------- fields in this struct
+...
+331 |     camera: Camera,
+    |     ^^^^^^
+332 |     camera_uniform: CameraUniform,
+    |     ^^^^^^^^^^^^^^
+333 |     camera_buffer: wgpu::Buffer,
+    |     ^^^^^^^^^^^^^
+334 |     camera_bind_group: wgpu::BindGroup,
+335 |     three_d_sample: three_d_sample::ThreeDSample,
+    |     ^^^^^^^^^^^^^^
+
+warning: function `animation_system` is never used
+    --> src/lib.rs:1005:4
+     |
+1005 | fn animation_system(world: &mut World, dt: f32) {
+     |    ^^^^^^^^^^^^^^^^
+
+warning: method `handle_input` is never used
+  --> src/egui_tools.rs:53:12
+   |
+14 | impl EguiRenderer {
+   | ----------------- method in this implementation
+...
+53 |     pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) {
+   |            ^^^^^^^^^^^^
+
+warning: field `lights` is never read
+ --> src/three_d_sample.rs:8:5
+  |
+4 | pub struct ThreeDSample {
+  |            ------------ field in this struct
+...
+8 |     lights: Vec<Box<dyn Light>>,
+  |     ^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:2571:37
+     |
+2571 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 15 warnings (run `cargo fix --lib -p physics_core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1.12s
+    Building x86_64 (x86_64-linux-android)
+   Compiling physics_core v0.1.0 (/Users/kamran/PhysicsFX/physics_core)
+warning: unused import: `bevy_ecs::system::SystemState`
+  --> src/lib.rs:24:5
+   |
+24 | use bevy_ecs::system::SystemState;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+    --> src/lib.rs:2662:29
+     |
+2662 |                         let mut window_handle =
+     |                             ----^^^^^^^^^^^^^
+     |                             |
+     |                             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` on by default
+
+warning: static `WIDTH` is never used
+  --> src/lib.rs:65:8
+   |
+65 | static WIDTH: u32 = 1024;
+   |        ^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: static `HEIGHT` is never used
+  --> src/lib.rs:66:8
+   |
+66 | static HEIGHT: u32 = 1024;
+   |        ^^^^^^
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:72:5
+   |
+71 | struct Position2D {
+   |        ---------- fields in this struct
+72 |     x: f32,
+   |     ^
+73 |     y: f32,
+   |     ^
+   |
+   = note: `Position2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: fields `x` and `y` are never read
+  --> src/lib.rs:78:5
+   |
+77 | struct Velocity2D {
+   |        ---------- fields in this struct
+78 |     x: f32,
+   |     ^
+79 |     y: f32,
+   |     ^
+   |
+   = note: `Velocity2D` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:83:14
+   |
+83 | struct Scale(f32);
+   |        ----- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Scale` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `0` is never read
+  --> src/lib.rs:86:17
+   |
+86 | struct Rotation(f32);
+   |        -------- ^^^
+   |        |
+   |        field in this struct
+   |
+   = help: consider removing this field
+   = note: `Rotation` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: field `collider_handle` is never read
+  --> src/lib.rs:91:5
+   |
+89 | struct PhysicsBody {
+   |        ----------- field in this struct
+90 |     rigid_body_handle: RigidBodyHandle,
+91 |     collider_handle: ColliderHandle,
+   |     ^^^^^^^^^^^^^^^
+   |
+   = note: `PhysicsBody` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: struct `EguiSettings` is never constructed
+   --> src/lib.rs:294:8
+    |
+294 | struct EguiSettings {
+    |        ^^^^^^^^^^^^
+
+warning: fields `camera`, `camera_uniform`, `camera_buffer`, and `three_d_sample` are never read
+   --> src/lib.rs:331:5
+    |
+301 | struct WgpuState {
+    |        --------- fields in this struct
+...
+331 |     camera: Camera,
+    |     ^^^^^^
+332 |     camera_uniform: CameraUniform,
+    |     ^^^^^^^^^^^^^^
+333 |     camera_buffer: wgpu::Buffer,
+    |     ^^^^^^^^^^^^^
+334 |     camera_bind_group: wgpu::BindGroup,
+335 |     three_d_sample: three_d_sample::ThreeDSample,
+    |     ^^^^^^^^^^^^^^
+
+warning: function `animation_system` is never used
+    --> src/lib.rs:1005:4
+     |
+1005 | fn animation_system(world: &mut World, dt: f32) {
+     |    ^^^^^^^^^^^^^^^^
+
+warning: method `handle_input` is never used
+  --> src/egui_tools.rs:53:12
+   |
+14 | impl EguiRenderer {
+   | ----------------- method in this implementation
+...
+53 |     pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) {
+   |            ^^^^^^^^^^^^
+
+warning: field `lights` is never read
+ --> src/three_d_sample.rs:8:5
+  |
+4 | pub struct ThreeDSample {
+  |            ------------ field in this struct
+...
+8 |     lights: Vec<Box<dyn Light>>,
+  |     ^^^^^^
+
+warning: `extern` fn uses type `AndroidApp`, which is not FFI-safe
+    --> src/lib.rs:2571:37
+     |
+2571 | pub extern "C" fn android_main(app: AndroidApp) {
+     |                                     ^^^^^^^^^^ not FFI-safe
+     |
+     = help: consider adding a `#[repr(C)]` or `#[repr(transparent)]` attribute to this struct
+     = note: this struct has unspecified layout
+     = note: `#[warn(improper_ctypes_definitions)]` on by default
+
+warning: `physics_core` (lib) generated 15 warnings (run `cargo fix --lib -p physics_core` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1.10s
 
 [Incubating] Problems report is available at: file:///Users/kamran/PhysicsFX/build/reports/problems/problems-report.html
-
-FAILURE: Build failed with an exception.
-
-* What went wrong:
-Execution failed for task ':composeApp:buildRustWasm'.
-> Process 'command 'wasm-pack'' finished with non-zero exit value 1
-
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
 
 Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
 
@@ -46,5 +607,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 933ms
+BUILD SUCCESSFUL in 5s
 1 actionable task: 1 executed

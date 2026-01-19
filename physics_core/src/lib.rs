@@ -1,9 +1,6 @@
+
 mod egui_tools;
 mod camera;
-#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-pub mod animation;
-#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-pub mod sprite;
 pub mod three_d_sample;
 
 use camera::{Camera, CameraUniform};
@@ -912,21 +909,12 @@ fn init_physics() {
             // Make the first entity controllable
             if x == 0 && y == 0 {
                 entity_cmds.insert(Controllable);
-                // Add Bevy Animation/Sprite samples to the first entity for demo
-                #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-                {
-                    entity_cmds.insert(animation::AnimationSample::default());
-                    entity_cmds.insert(bevy_animation::prelude::AnimationPlayer::default());
-                    entity_cmds.insert(sprite::SpriteSample::default());
-                }
                 // We'd add a Sprite component here if we had a texture handle.
-                // entity_cmds.insert(bevy_sprite::prelude::Sprite::default()); 
+                // entity_cmds.insert(bevy_sprite::prelude::Sprite::default());  
             }
         }
         
     // Initialize GameTime resource
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-    world.insert_resource(sprite::GameTime(0.0));
     }
     
     // Create static wall boundaries (viewport edges: -1 to 1)
@@ -1085,18 +1073,6 @@ fn update_internal(_dt: f32) {
                     for event in guard.events.drain(..) {
                         event_queue.push(event);
                     }
-                    // Update GameTime resource for Bevy Sprite sample
-                    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-                    if let Some(mut time) = physics.world.get_resource_mut::<sprite::GameTime>() {
-                        time.0 += _dt; // Accumulate time or set dt? Sample used dt for spin, but usually one wants accumulated time for sin(t).
-                        // Actually sprite sample used dt * speed then sin(), wait.
-                        // "size.x = (dt * sample.rotate_speed).sin();" -> if dt is delta, this flickers.
-                        // I should pass elapsed time.
-                        // Let's assume GameTime holds elapsed time.
-                    } else {
-                         // Initialize if missing (should be in init but safe to do here)
-                         physics.world.insert_resource(sprite::GameTime(0.0));
-                    }
                 }
              }
         }
@@ -1115,21 +1091,9 @@ fn update_internal(_dt: f32) {
 
         // Run Bevy Animation/Sprite sample systems
         // Note: Constructing SystemState every frame is inefficient; ideally this should be cached.
-        #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-        {
-            let mut animation_system_state: SystemState<(
-                Query<(&mut bevy_animation::prelude::AnimationPlayer, &animation::AnimationSample)>,
-            )> = SystemState::new(&mut physics.world);
-            let (query,) = animation_system_state.get_mut(&mut physics.world); 
-            animation::animation_control_system(query);
-            
-            let mut sprite_system_state: SystemState<(
-                Query<(&mut bevy_sprite::prelude::Sprite, &sprite::SpriteSample)>,
-                Res<sprite::GameTime>,
-            )> = SystemState::new(&mut physics.world);
-            let (query, time) = sprite_system_state.get_mut(&mut physics.world);
-            sprite::sprite_spin_system(query, time);
-        }
+        // Run Bevy Animation/Sprite sample systems
+        // Note: Constructing SystemState every frame is inefficient; ideally this should be cached.
+        
             
             // Process Inputs
             input_system(&mut physics.world, &mut physics.rigid_body_set);
