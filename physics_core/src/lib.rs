@@ -1,9 +1,13 @@
-
 mod egui_tools;
 mod camera;
-pub mod three_d_sample;
+pub mod animation;
+pub mod sprite;
+pub mod bevy_3d_sample;
+
+use bevy_3d_sample::Bevy3DSample;
 
 use camera::{Camera, CameraUniform};
+
 use ::nalgebra as na;
 
 use once_cell::sync::Lazy;
@@ -93,9 +97,11 @@ struct PhysicsBody {
 
 // --- Strategy Pattern Components for Animated Entities ---
 pub mod game_entity;
+pub use animation::AnimatorComponent;
+pub use sprite::SpriteSheetComponent;
 pub use game_entity::{
-    AnimatorComponent, CircularMovement, GameEntity, HorizontalRandomMovement, LinearMovement,
-    MovementComponent, MovementStrategy, SinusoidalMovement, SpriteSheetComponent, Controllable,
+    CircularMovement, GameEntity, HorizontalRandomMovement, LinearMovement,
+    MovementComponent, MovementStrategy, SinusoidalMovement, Controllable,
 };
 
 
@@ -332,7 +338,7 @@ struct WgpuState {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    three_d_sample: three_d_sample::ThreeDSample,
+    bevy_3d_sample: Option<Bevy3DSample>,
 }
 
 // Wrapper to force Send/Sync for WASM where we know it's single-threaded
@@ -799,13 +805,14 @@ fn init_wgpu_internal(
     let device = Arc::new(device);
     let queue = Arc::new(queue);
     
-    let three_d_sample = three_d_sample::ThreeDSample::new(
-        device.clone(),
-        queue.clone(),
-        adapter_info,
+    let bevy_3d_rend = Bevy3DSample::new(
+        &device,
+        &queue,
+        &camera_bind_group_layout,
+        &adapter_info,
         config.format,
-        config.width,
-        config.height,
+        width,
+        height,
     );
 
 
@@ -841,7 +848,7 @@ fn init_wgpu_internal(
         camera_uniform,
         camera_buffer,
         camera_bind_group,
-        three_d_sample,
+        bevy_3d_sample: Some(bevy_3d_rend),
     };
 
     #[cfg(target_arch = "wasm32")]
@@ -1002,14 +1009,7 @@ fn resize_internal(width: u32, height: u32) {
         }
     }
 }
-fn animation_system(world: &mut World, dt: f32) {
-    for (mut animator, sprite_sheet) in world.query::<(&mut AnimatorComponent, &SpriteSheetComponent)>().iter_mut(world) {
-        if animator.is_playing {
-            animator.elapsed_time += dt;
-            animator.current_frame = sprite_sheet.frame_for_time(animator.elapsed_time, animator.speed);
-        }
-    }
-}
+
 
 fn input_system(world: &mut World, rigid_body_set: &mut RigidBodySet) {
     let mut impulses = Vec::new();
@@ -1097,6 +1097,14 @@ fn update_internal(_dt: f32) {
             
             // Process Inputs
             input_system(&mut physics.world, &mut physics.rigid_body_set);
+
+            // Run Animation System
+            {
+                let mut system_state = SystemState::<Query<(&mut AnimatorComponent, &SpriteSheetComponent)>>::new(&mut physics.world);
+                let query = system_state.get_mut(&mut physics.world);
+                animation::animation_system(query, physics.integration_parameters.dt);
+            }
+
             
             // Clear processed events
             if let Some(mut events) = physics.world.get_resource_mut::<EventQueue>() {
@@ -1312,6 +1320,20 @@ fn render_internal(window: Option<&winit::window::Window>) {
                     render_pass.set_index_buffer(state.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                     
                     render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..state.num_instances);
+
+                    // Render Bevy 3DSample (Cube)
+                    if let Some(bevy_3d) = state.bevy_3d_sample.as_mut() {
+                        // Update with dt (assuming ~60fps if we don't have a precise dt here, 
+                        // but let's try to calculate it from elapsed)
+                        #[cfg(target_arch = "wasm32")]
+                        let dt = 0.016; // Default to 60fps for WASM simple update
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let dt = 0.016; // Use fixed 0.016 for now to avoid complexity in this pass
+
+                        bevy_3d.update(&state.queue, dt);
+                        bevy_3d.set_camera_bind_group(state.camera_bind_group.clone()); // Ensure it's using the current camera BG
+                        bevy_3d.render(&mut render_pass);
+                    }
                 }
 
 
@@ -2241,10 +2263,11 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
     let device = Arc::new(device);
     let queue = Arc::new(queue);
 
-    let three_d_sample = three_d_sample::ThreeDSample::new(
-        device.clone(),
-        queue.clone(),
-        adapter_info,
+    let bevy_3d_rend = Bevy3DSample::new(
+        &device,
+        &queue,
+        &camera_bind_group_layout,
+        &adapter_info,
         config.format,
         config.width,
         config.height,
@@ -2282,7 +2305,7 @@ pub async fn wasm_init(canvas_id: &str, width: u32, height: u32) -> bool {
         camera_uniform,
         camera_buffer,
         camera_bind_group,
-        three_d_sample,
+        bevy_3d_sample: Some(bevy_3d_rend),
     };
 
     if let Ok(mut guard) = WGPU_STATE.lock() {
