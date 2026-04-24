@@ -2,8 +2,8 @@
 This is a Kotlin Multiplatform game project targeting Android, iOS, Web (WASM), and Desktop.
 The project is meant to serve as a template for game development using Kotlin Multiplatform and Rust.
 
-* The frontend is written in Kotlin Compose Multiplatform.
-* The backend game engine is written in Rust WebGPU (Rust wgpu crate) for game loop and rendering.
+* The frontend is Kotlin Compose Multiplatform.
+* The backend game engine is Rust WebGPU (Rust wgpu crate) for game loop and rendering.
 * Rapier physics engine (Rust) to handle physics.
 * BEVY-ECS (Rust) to handle game entities and components.
 * Kotlin interfaces with Rust through JNI for Android and JVM desktop, WASM-bindgen for WASM, and cinterop for iOS.
